@@ -24,104 +24,46 @@
 #include <atheros.h>
 #include "athrs_ar8033_phy.h"
 
-//add by dragon 2014.12.8
-#if (defined(CONFIG_ATHR_8033_PHY) && (defined(CONFIG_MACH_QCA955x) || defined(CONFIG_MACH_QCA956x)))
-#define PHY_ADDR 0x4
-#endif
-
-void
-athrs_ar8033_mgmt_init(void)
+int athrs_ar8033_mgmt_init(void)
 {
-//modify by dragon 2014.12.8
-#if (defined(CONFIG_ATHR_8033_PHY) && (defined(CONFIG_MACH_QCA955x)))
-	smiWrite(PHY_ADDR, 0x00, 0x9000);		//add by dragon 2014.12.8
-#elif (defined(CONFIG_ATHR_8033_PHY) && (defined(CONFIG_MACH_QCA956x)))
-    smiWrite(PHY_ADDR, 0x00, 0x1000);
+	// Initialize MDC GPIO
+	MII_INIT;
+
+#ifdef CONFIG_MACH_QCA955x
+	return bb_miiphy_write(NULL, MII_PHY_ADDR, 0x00, 0x9000);
+#elif defined(CONFIG_MACH_QCA956x)
+    return bb_miiphy_write(NULL, MII_PHY_ADDR, 0x00, 0x1000);
 #else
-    uint32_t rddata;
-
-
-    rddata = ath_reg_rd(GPIO_IN_ENABLE3_ADDRESS)&
-             ~GPIO_IN_ENABLE3_MII_GE1_MDI_MASK;
-    rddata |= GPIO_IN_ENABLE3_MII_GE1_MDI_SET(19);
-    ath_reg_wr(GPIO_IN_ENABLE3_ADDRESS, rddata);
-    
-    ath_reg_rmw_clear(GPIO_OE_ADDRESS, ATH_GPIO);
-
-    ath_reg_rmw_clear(GPIO_OE_ADDRESS, ATH_GPIO17);
-
-    
-    rddata = ath_reg_rd(GPIO_OUT_FUNCTION4_ADDRESS) & 
-             ~ (GPIO_FUNCTION4_MASK);
-
-    rddata |= (GPIO_FUNCTION4_ENABLE);
-
-    ath_reg_wr(GPIO_OUT_FUNCTION4_ADDRESS, rddata);
-
-#ifdef ATH_MDC_GPIO
-    rddata = ath_reg_rd(GPIO_OUT_FUNCTION3_ADDRESS) &
-           ~ (GPIO_OUT_FUNCTION3_ENABLE_GPIO_14_MASK);
-
-    rddata |= GPIO_OUT_FUNCTION3_ENABLE_GPIO_14_SET(0x21);
-
-    ath_reg_wr(GPIO_OUT_FUNCTION3_ADDRESS, rddata);
+# error "Unsupported Atheros SOC for AR8033"
 #endif
-#endif
-
-	return;	//add by dragon 2014.12.8
 }
 
-int
-athrs_ar8033_phy_setup(void  *arg)
+int athrs_ar8033_phy_setup(void  *arg)
 {
-#if (defined(CONFIG_ATHR_8033_PHY) && (defined(CONFIG_MACH_QCA955x) || defined(CONFIG_MACH_QCA956x)))
-     smiWrite(PHY_ADDR, 0x00, 0x9000);	//add by dragon 2014.12.8
- #endif
- 
-    return 0;
+	return bb_miiphy_write(NULL, MII_PHY_ADDR, 0x00, 0x9000);
 }
 
-int
-athrs_ar8033_phy_is_fdx(int ethUnit)
+int athrs_ar8033_phy_is_fdx(int ethUnit)
 {
+	unsigned short phy_hw_status;
 
-#if (defined(CONFIG_ATHR_8033_PHY) && (defined(CONFIG_MACH_QCA955x) || defined(CONFIG_MACH_QCA956x)))
-	//add by dragon 2014.12.8
-	uint32_t phy_hw_status = 0x0;
-
-    smiRead(PHY_ADDR, 0x11, &phy_hw_status);
+    bb_miiphy_read(NULL, MII_PHY_ADDR, 0x11, &phy_hw_status);
     if ((phy_hw_status & (1<<13))>>13 == 1)
     {
         printf("Checking Duplex: Full\n");
         return 1;
     }
     printf("Checking Duplex: Half\n");
-#else
-   int phy_hw_status = 0x0;
 
-   phy_hw_status = ath_reg_rd(SGMII_MAC_RX_CONFIG_ADDRESS);
-
-   if (SGMII_MAC_RX_CONFIG_DUPLEX_MODE_GET(phy_hw_status) == 1) {
-        return 1;
-    } else if (SGMII_MAC_RX_CONFIG_DUPLEX_MODE_GET(phy_hw_status) == 0) {
-        return 0;
-    }
-#endif
-
-	
     return 0;
 	
 }
 
-int
-athrs_ar8033_phy_is_link_alive(int phyUnit)
+int athrs_ar8033_phy_is_link_alive(int phyUnit)
 {
+	unsigned short phy_hw_status;
 
-#if (defined(CONFIG_ATHR_8033_PHY) && (defined(CONFIG_MACH_QCA955x) || defined(CONFIG_MACH_QCA956x)))
-	//add by dragon 2014.12.8
-	uint32_t phy_hw_status = 0x0;
-
-    smiRead(PHY_ADDR, 0x11, &phy_hw_status);
+    bb_miiphy_read(NULL, MII_PHY_ADDR, 0x11, &phy_hw_status);
     if ((phy_hw_status & (1<<10))>>10 == 1)
     {
         printf("Checking Link: Up\n");
@@ -129,28 +71,13 @@ athrs_ar8033_phy_is_link_alive(int phyUnit)
     }
     printf("Checking Link: Down\n");
 	return 0;
-#else
-   int phy_hw_status = 0x0;
-
-   phy_hw_status = ath_reg_rd(SGMII_MAC_RX_CONFIG_ADDRESS);
-
-   if (SGMII_MAC_RX_CONFIG_LINK_GET(phy_hw_status))
-        return 1;
-    else
-        return 0;
-#endif
-	
   }
 
-int
-athrs_ar8033_phy_is_up(int ethUnit)
+int athrs_ar8033_phy_is_up(int ethUnit)
 {
+	unsigned short phy_hw_status;
 
-#if (defined(CONFIG_ATHR_8033_PHY) && (defined(CONFIG_MACH_QCA955x) || defined(CONFIG_MACH_QCA956x)))
-	//add by dragon 2014.12.8
-   uint32_t phy_hw_status = 0x0;
-
-    smiRead(PHY_ADDR, 0x11, &phy_hw_status);
+    bb_miiphy_read(NULL, MII_PHY_ADDR, 0x11, &phy_hw_status);
     if ((phy_hw_status & (1<<10))>>10 == 1)
     {
         printf("Checking Link: Up\n");
@@ -158,27 +85,13 @@ athrs_ar8033_phy_is_up(int ethUnit)
     }
     printf("Checking Link: Down\n");
     return 0;
-#else
-   int phy_hw_status = 0x0;
-
-   phy_hw_status = ath_reg_rd(SGMII_MAC_RX_CONFIG_ADDRESS);
-    if (SGMII_MAC_RX_CONFIG_LINK_GET(phy_hw_status))
-        return 1;
-    else
-        return 0;
-#endif
-	
 }
-int
-athrs_ar8033_phy_speed(int ethUnit)
+
+int athrs_ar8033_phy_speed(int ethUnit)
 {
+	unsigned short phy_hw_status = (3 << 14), speed;
 
-#if (defined(CONFIG_ATHR_8033_PHY) && (defined(CONFIG_MACH_QCA955x) || defined(CONFIG_MACH_QCA956x)))
-	//add by dragon 2014.12.8
-	uint32_t phy_hw_status = 0x0;
-    uint32_t speed = 0x0;
-
-    smiRead(PHY_ADDR, 0x11, &phy_hw_status);
+    bb_miiphy_read(NULL, MII_PHY_ADDR, 0x11, &phy_hw_status);
     speed = (phy_hw_status & (3<<14)) >> 14;
 
     switch (speed) {
@@ -199,51 +112,11 @@ athrs_ar8033_phy_speed(int ethUnit)
                  return -1;
                  break;
     }
-#else
-   int phy_hw_status = 0x0,speed;
-
-   phy_hw_status = ath_reg_rd(SGMII_MAC_RX_CONFIG_ADDRESS);
-
-   speed = ((phy_hw_status & (3 << 10)) >> 10);
-
-   switch (speed) {
-        case 0:
-                return _10BASET;
-                break;
-        case 1:
-                return _100BASET;
-                break;
-        case 2:
-                return _1000BASET;
-                break;
-        default:
-                return -1;
-                break;
-   }
-
-#endif
-
-	
 
     return -1;
-	
 }
 
-
-int 
-athrs_ar8033_reg_init(void *arg)
+int athrs_ar8033_reg_init(void *arg)
 {
-//modify by phw
-#if (defined(CONFIG_ATHR_8033_PHY) && (defined(CONFIG_MACH_QCA955x) || defined(CONFIG_MACH_QCA956x)))
-	athrs_ar8033_mgmt_init();
- #else
- 	athrs_ar8033_mgmt_init();
-	
-	phy_reg_write(0x1,0x5, 0x1f, 0x101);	
-
-	printf("%s: Done %x \n",__func__, phy_reg_read(0x1,0x5,0x1f));
- #endif
- 
-	return 0;
+	return athrs_ar8033_mgmt_init();
 }
-

@@ -101,8 +101,6 @@ endif
 
 ifeq ($(ETH_CONFIG), _ar8033)
 OBJS	+= ../common/athr_ar8033_phy.o
-#add by dragon
-OBJS	+= ../common/mdcmdio.o
 endif
 
 
