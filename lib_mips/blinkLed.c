@@ -8,7 +8,31 @@
 #include <common.h>
 #include <exports.h>
 #include "../include/atheros.h"
-#include "../include/led_config.h"
+#include "../include/config.h"
+
+#ifndef GPIO_LED_PORT_WIFI_2G_AP
+# define GPIO_LED_PORT_WIFI_2G_AP -1
+#endif
+
+#ifndef GPIO_LED_PORT_WIFI_5G_AP
+# define GPIO_LED_PORT_WIFI_5G_AP -1
+#endif
+
+#ifndef GPIO_LED_PORT_ETHERNET
+# define GPIO_LED_PORT_ETHERNET -1
+#endif
+
+#ifndef GPIO_LED_PORT_SYS
+# define GPIO_LED_PORT_SYS -1
+#endif
+
+#ifndef GPIO_SOCKET_LED
+# define GPIO_SOCKET_LED -1
+#endif
+
+#ifndef GPIO_LED_PORT_LED_CONTROL
+# define GPIO_LED_PORT_LED_CONTROL -1
+#endif
 
 static void gpioOutputEnable(int gpio)
 {
@@ -49,19 +73,21 @@ static void initLeds(void)
 		gpioOutputEnable(GPIO_LED_PORT_WIFI_5G_AP);
 
 	if(-1!=GPIO_LED_PORT_ETHERNET)
-	gpioOutputEnable(GPIO_LED_PORT_ETHERNET);
+		gpioOutputEnable(GPIO_LED_PORT_ETHERNET);
 
 	if(-1!=GPIO_LED_PORT_SYS)
 		gpioOutputEnable(GPIO_LED_PORT_SYS);
+
 #ifdef HAVE_SOCKET
-		gpioOutputEnable(GPIO_SOCKET_LED);
+	gpioOutputEnable(GPIO_SOCKET_LED);
 #endif
+
 	//leds' power
 	if(-1!=GPIO_LED_PORT_LED_CONTROL)
 		gpioOutputEnable(GPIO_LED_PORT_LED_CONTROL);
 }
 
-static void turnOnLeds(void)
+static void turnOffLeds(void)
 {
 	if(-1!=GPIO_LED_PORT_WIFI_2G_AP)
 		gpioOutputClear(GPIO_LED_PORT_WIFI_2G_AP);
@@ -74,16 +100,13 @@ static void turnOnLeds(void)
 
 	if(-1!=GPIO_LED_PORT_SYS)
 		gpioOutputClear(GPIO_LED_PORT_SYS);
+
 #ifdef HAVE_SOCKET
 	gpioOutputClear(GPIO_SOCKET_LED);
 #endif
-
-	if(-1!=GPIO_LED_PORT_LED_CONTROL)
-		gpioOutputClear(GPIO_LED_PORT_LED_CONTROL);
-
 }
 
-static void turnOffLeds(void)
+static void turnOnLeds(void)
 {
 	//write only register can not be read!
 	//ath_reg_rd(GPIO_SET_ADDRESS, (1 << GPIO_LED_POWER));
@@ -98,10 +121,14 @@ static void turnOffLeds(void)
 
 	if(-1!=GPIO_LED_PORT_SYS)
 		gpioOutputSet(GPIO_LED_PORT_SYS);
+
 #ifdef HAVE_SOCKET
 	gpioOutputSet(GPIO_SOCKET_LED);
 #endif
 	//ath_reg_rmw_set(GPIO_OUT_ADDRESS, (1 << GPIO_LED_POWER));
+
+	if(-1!=GPIO_LED_PORT_LED_CONTROL)
+		gpioOutputSet(GPIO_LED_PORT_LED_CONTROL);
 
 }
 
@@ -159,6 +186,6 @@ void blinkLeds(void)
 #endif	
 	//turn on power led
 	if(-1!=GPIO_LED_PORT_SYS)
-		gpioOutputClear(GPIO_LED_PORT_SYS);
+		gpioOutputSet(GPIO_LED_PORT_SYS);
 	
 }
