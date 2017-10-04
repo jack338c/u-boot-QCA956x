@@ -145,7 +145,8 @@ CFLAGS += -DCOMPRESSED_UBOOT=1
 endif
 
 ifeq ($(BUILD_OPTIMIZED),y)
-CFLAGS += -Os -funit-at-a-time -mips32r2 -mtune=mips32r2
+CFLAGS += -Os -funit-at-a-time -ffunction-sections
+LDFLAGS += -gc-sections
 endif
 endif
 

@@ -28,7 +28,7 @@ mips-linux-as --version|grep "GNU assembler"|awk '{print $$3}'|awk -F . '{print 
 if [ "$v" -lt "14" ]; then \
 	echo "-mcpu=4kc"; \
 else \
-	echo "-march=4kc -mtune=4kc"; \
+	echo "-march=24kc -mtune=24kc"; \
 fi)
 
 ifneq (,$(findstring 4KCle,$(CROSS_COMPILE)))
