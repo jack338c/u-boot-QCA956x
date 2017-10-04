@@ -521,4 +521,43 @@
 
 #include <cmd_confdefs.h>
 
+#ifdef CONFIG_EAP245_V1
+//#define ENV_IS_EMBEDDED 1
+#undef ENV_IS_EMBEDDED
+#undef CFG_ENV_IS_IN_NAND
+#undef CFG_ENV_IS_IN_FLASH
+#define CFG_ENV_IS_NOWHERE
+//#undef CONFIG_NET_MULTI
+//#undef CFG_HUSH_PARSER
+#undef CONFIG_BOOTCOMMAND
+#define CONFIG_BOOTCOMMAND	"bootelf 0x9f040000"
+
+#undef BOARDCAL
+#define CONFIG_PANIC_HANG
+
+#undef CONFIG_COMMANDS
+#define CONFIG_COMMANDS		((                      \
+                                CONFIG_CMD_DFL  |       \
+				CFG_CMD_LOADS   |       \
+                                CFG_CMD_LOADB	|       \
+                                CFG_CMD_ELF     |       \
+                                CFG_CMD_FLS     |       \
+                                CFG_CMD_NET     |       \
+                         	CFG_CMD_FLASH   |	\
+                                CFG_CMD_RUN     |       \
+				CFG_CMD_NET		|	\
+                                CFG_CMD_ELF ) & ~(	\
+				CFG_CMD_ENV	|	\
+				CFG_CMD_MII	|	\
+				CFG_CMD_ECHO	|	\
+				CFG_CMD_ITEST	|	\
+				CFG_CMD_AUTOSCRIPT |	\
+				CFG_CMD_CONSOLE |	\
+				CFG_CMD_NFS	|	\
+				CFG_CMD_BDI	|	\
+				CFG_CMD_IMI	|	\
+				CFG_CMD_IMLS | CFG_CMD_ITEST | CFG_CMD_BOOTD |	\
+				CFG_CMD_NAND	|	\
+				CFG_CMD_MISC ))
+#endif /* CONFIG_EAP245_V1 */
 #endif	/* __BOARD_956X_H */

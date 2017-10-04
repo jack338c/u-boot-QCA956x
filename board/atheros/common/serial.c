@@ -121,6 +121,22 @@ int serial_init(void)
 	ath_reg_rmw_set(GPIO_IN_ENABLE0_ADDRESS,
 			GPIO_IN_ENABLE0_UART_SIN_SET(0x13));
 
+#elif defined(UART_RX16_TX17)
+	// disable JTAG
+	ath_reg_rmw_set(GPIO_FUNCTION_ADDRESS, (1 << 1));
+
+	val = (ath_reg_rd(GPIO_OE_ADDRESS) & (~0x30000)) | 0x10000;
+	ath_reg_wr(GPIO_OE_ADDRESS, val);
+
+	ath_reg_rmw_set(GPIO_OUT_FUNCTION4_ADDRESS,
+			GPIO_OUT_FUNCTION4_ENABLE_GPIO_17_SET(0x16));
+
+	ath_reg_rmw_clear(GPIO_IN_ENABLE0_ADDRESS,
+			GPIO_IN_ENABLE0_UART_SIN_MASK);
+
+	ath_reg_rmw_set(GPIO_IN_ENABLE0_ADDRESS,
+			GPIO_IN_ENABLE0_UART_SIN_SET(0x10));
+
 #elif defined(TEST_BOARD_UART)
 	//Switch GPI and GPO and XPA1, ANTC
 	ath_reg_wr(GPIO_FUNCTION_ADDRESS, 0xc000);

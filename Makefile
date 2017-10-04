@@ -3249,11 +3249,23 @@ ap152_config:board956x_config
 ap152v2_config:board956x_config
 	@echo "make ap152"
 
+eap245v1_config: \
+	ETH_CONFIG := _ar8033
+	PRODUCT_NAME := eap245v1
+	CFG_BOARD_TYPE := ap152
+	pll := CFG_PLL_775_650_258
+	ddr_cas := 5
+	GPIO_MII_MDC := 8
+	GPIO_MII_MDIO := 10
+	FW_KERNEL_OFFSET := 0x020000
+	NM_PTN_TABLE_BASE := 0x600000
+	FLASH_SIZE := 16
+
 board956x_config: unconfig
 	@echo '#define CONFIG_ATHEROS		1'	>include/config.h
 	@echo '#define CONFIG_MACH_QCA956x	1'	>>include/config.h
 	@echo '#define CFG_INIT_STACK_IN_SRAM	1'	>>include/config.h
-	@echo '#define CONFIG_'`echo $(CFG_BOARD_TYPE) | tr [a-z] [A-Z] | sed s/-/_/g`'	1' >>include/config.h
+	@echo '#define CONFIG_$(shell echo $(CFG_BOARD_TYPE) | tr [:lower:] [:upper:] | tr - _) 1' >>include/config.h
 	@echo '#define __CONFIG_BOARD_NAME $(CFG_BOARD_TYPE)' >>include/config.h
 	@echo '#define CONFIG_BOARD_NAME "$(CFG_BOARD_TYPE)"' >>include/config.h
 ifdef pll
@@ -3309,19 +3321,18 @@ ifneq (,$(findstring wpa8730v2, $(PRODUCT_NAME))) #{
 	@echo '#define CONFIG_WPA8730_V2		1'		>>include/config.h
 	@echo '#define IMAGE_WITH_TP_TAG		1'		>>include/config.h
 	@echo '#define BOOT_KERNEL_OFFSET  $(FW_KERNEL_OFFSET)'		>>include/config.h
-ifeq ($(ETH_CONFIG), _ar8033)
-	#@echo '#define CFG_ATH_GE1_IS_CONNECTED 1' 	>>include/config.h
-	@echo '#define CONFIG_ATHR_8033_PHY 1' >>include/config.h
-	@echo '#define CFG_ATH_GMAC_NMACS 1' >>include/config.h
-	######add by dragon ########
-	@echo '#define ATHR_GMAC0_MII_PHY ATHR_AR8033_PHY' >>include/config.h
-	@echo '#define CONFIG_ATHRS_GMAC_SGMII 1' >>include/config.h
-	#@echo '#define ATH_RGMII_CAL' >>include/config.h
-	#@echo '#define CONFIG_WASP 1' >>include/config.h
-	#@echo '#define OCTEON_RGMII_ENET' >>include/config.h
-	#@echo '#define CONFIG_S17_SWMAC6_CONNECTED 1' >>include/config.h
-	###########################
-endif
+endif #}
+
+ifneq (,$(findstring eap245v1, $(PRODUCT_NAME))) #{
+	@echo '#define CONFIG_EAP245_V1		1'		>>include/config.h
+	@echo '#define IMAGE_WITH_TP_TAG		1'		>>include/config.h
+	@echo '#define BOOT_KERNEL_OFFSET  $(FW_KERNEL_OFFSET)'		>>include/config.h
+	@echo '#undef UART_RX18_TX22'		>>include/config.h
+	@echo '#define UART_RX16_TX17		1'	>>include/config.h
+	@echo '#define GPIO_LED_PORT_SYS		7' >>include/config.h
+	@echo '#define GPIO_LED_PORT_LED_CONTROL	5' >>include/config.h
+	@echo '#define GPIO_LED_PORT_WIFI_2G_AP		1' >>include/config.h
+	@echo '#define GPIO_LED_PORT_WIFI_5G_AP		9' >>include/config.h
 endif #}
 
 endif #}
@@ -3345,10 +3356,6 @@ ifneq (,$(findstring $(CFG_BOARD_TYPE),dragonflyemu)) #{
 	@echo '#define CONFIG_ATHRS_GMAC_SGMII  1'      >>include/config.h
 endif #}
 
-ifeq ($(CFG_BOARD_TYPE), ap152)
-	@echo '#define CONFIG_ATHRS_GMAC_SGMII	1'	>>include/config.h
-endif
-
 ifeq ($(ETH_CONFIG), _s27)
 	@echo '#define CFG_ATHRS27_PHY		1'	>>include/config.h
 endif
@@ -3359,6 +3366,15 @@ endif
 
 ifeq ($(ETH_CONFIG), _s17_hwaccel)
 	@echo '#define CONFIG_ATHRS17_PHY	1'	>>include/config.h
+endif
+
+ifeq ($(ETH_CONFIG), _ar8033)
+	@echo '#define CONFIG_ATHR_8033_PHY 1' >>include/config.h
+	@echo '#define ATHR_GMAC0_MII_PHY ATHR_AR8033_PHY' >>include/config.h
+ifdef GPIO_MII_MDC
+	@echo '#define GPIO_MII_MDC					$(GPIO_MII_MDC)'	>>include/config.h
+	@echo '#define GPIO_MII_MDIO				$(GPIO_MII_MDIO)'	>>include/config.h
+endif
 endif
 
 ifeq ($(ATH_SGMII_FORCED),1)
@@ -3411,9 +3427,9 @@ ifneq ($(WEB_PLC_UPGRADE_FLAG),)
 endif
 
 endif
-
 	@./mkconfig -a board956x mips mips board956x atheros
 
+eap245v1_config: unconfig board956x_config
 
 ap138_config: 	unconfig
 	@echo '#define CONFIG_ATHEROS		1'	>include/config.h
@@ -3478,7 +3494,6 @@ ifdef FLASH_SIZE
 	@echo '#define FLASH_SIZE	$(FLASH_SIZE)'	>>include/config.h
 endif
 	@./mkconfig -a board955x mips mips board955x atheros
-
 
 #========================================================================
 # Nios

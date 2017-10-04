@@ -1,0 +1,5 @@
+Configure with:
+make ARCH=mips CROSS_COMPILE=... ETH_CONFIG=_ar8033 eap245v1_config
+
+Compile with:
+make ARCH=mips CROSS_COMPILE=... ETH_CONFIG=_ar8033 all
