@@ -66,7 +66,7 @@ int do_bootelf (cmd_tbl_t *cmdtp, int flag, int argc, char *argv[])
 	 * pass address parameter as argv[0] (aka command name),
 	 * and all remaining args
 	 */
-	rc = ((ulong (*)(int, char *[])) addr) (--argc, &argv[1]);
+	rc = ((ulong (*)(int, char *[], void *)) addr) (--argc, &argv[1], NULL);
 	if (rc != 0)
 		rcode = 1;
 
