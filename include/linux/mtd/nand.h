@@ -5,6 +5,8 @@
  *                     Steven J. Hill <sjhill@realitydiluted.com>
  *		       Thomas Gleixner <tglx@linutronix.de>
  *
+ *  Copyright (c) 2013 Qualcomm Atheros, Inc.
+ *
  * $Id: nand.h,v 1.68 2004/11/12 10:40:37 gleixner Exp $
  *
  * This program is free software; you can redistribute it and/or modify
@@ -348,6 +350,10 @@ struct nand_chip {
 #define NAND_MFR_NATIONAL	0x8f
 #define NAND_MFR_RENESAS	0x07
 #define NAND_MFR_STMICRO	0x20
+#define NAND_MFR_HYNIX		0xad
+#define NAND_MFR_MICRON		0x2c
+#define NAND_MFR_AMD		0x01
+
 
 /**
  * struct nand_flash_dev - NAND Flash Device ID Structure

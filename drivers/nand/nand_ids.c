@@ -2,6 +2,7 @@
  *  drivers/mtd/nandids.c
  *
  *  Copyright (C) 2002 Thomas Gleixner (tglx@linutronix.de)
+ *  Copyright (c) 2013 Qualcomm Atheros, Inc.
   *
  * $Id: nand_ids.c,v 1.10 2004/05/26 13:40:12 gleixner Exp $
  *
@@ -127,6 +128,9 @@ struct nand_manufacturers nand_manuf_ids[] = {
 	{NAND_MFR_NATIONAL, "National"},
 	{NAND_MFR_RENESAS, "Renesas"},
 	{NAND_MFR_STMICRO, "ST Micro"},
+	{NAND_MFR_HYNIX, "Hynix"},
+	{NAND_MFR_MICRON, "Micron"},
+	{NAND_MFR_AMD, "AMD"},
 	{0x0, "Unknown"}
 };
 #endif

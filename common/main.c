@@ -2,6 +2,8 @@
  * (C) Copyright 2000
  * Wolfgang Denk, DENX Software Engineering, wd@denx.de.
  *
+ * Copyright (c) 2013 Qualcomm Atheros, Inc.
+ *
  * See file CREDITS for list of people who contributed to this
  * project.
  *
@@ -36,8 +38,16 @@
 
 #include <post.h>
 
+#ifdef CFG_DOUBLE_BOOT_FACTORY
+#include "nm_api.h"
+#endif
+
 #ifdef CONFIG_SILENT_CONSOLE
 DECLARE_GLOBAL_DATA_PTR;
+#endif
+
+#ifdef CONFIG_DUALIMAGE_SUPPORT
+extern unsigned findbdr(unsigned int flashaddr);
 #endif
 
 #if defined(CONFIG_BOOT_RETRY_TIME) && defined(CONFIG_RESET_TO_RETRY)
@@ -287,6 +297,49 @@ static __inline__ int abortboot(int bootdelay)
 #endif	/* CONFIG_BOOTDELAY >= 0  */
 
 /****************************************************************************/
+#if defined(CFG_DOUBLE_BOOT_FACTORY)
+/*  *********************************************************************
+    *  load_fs_uboot()
+    *  
+    *  load fs-uboot to memory
+    *  
+    *  Input parameters: 
+    *  	   nothing
+    *  	   
+    *  Return value:
+    *  	   0 if ok, -1 if fail
+    ********************************************************************* */
+int load_fs_uboot(void)
+{	
+    //copy the fs-uboot code to the ram address 0x80010000, 
+    //max buffer size 0x20000
+    int len = 0;
+    char *buf = (char *)TEXT_BASE;
+    unsigned long bufLen = CONFIG_SECOND_BOOTLOADER_SIZE;
+
+    if (OK != nm_init())   
+    {
+	printf("set integer flag partition init fail.");
+	return ERROR;
+    }
+
+    memset(buf, 0, bufLen);
+    len = nm_api_readPtnFromNvram(NM_PTN_NAME_FS_UBOOT, buf, bufLen);
+    if (len < 0) return ERROR;
+	
+#if defined(CONFIG_AR7100) || defined(CONFIG_AR7240) || defined(CONFIG_ATHEROS)
+		/*
+		 * Flush everything
+		 */
+    mips_cache_flush();
+    mips_icache_flush_ix();
+#endif
+
+    return OK;
+}
+#endif //CFG_DOUBLE_BOOT_FACTORY
+
+
 
 void main_loop (void)
 {
@@ -397,6 +450,43 @@ void main_loop (void)
 	else
 #endif /* CONFIG_BOOTCOUNT_LIMIT */
 		s = getenv ("bootcmd");
+       if (!s) {
+#ifdef CONFIG_ROOTFS_FLASH
+           /* XXX if rootfs is in flash, expect uImage to be in flash */
+#ifdef CONFIG_AR7100
+           setenv ("bootcmd", "bootm 0xbf200000");
+#else
+           setenv ("bootcmd", "bootm 0xbf450000");
+#endif /* CONFIG_AR7100 */
+#else
+           setenv ("bootcmd", "tftpboot 0x8022c090 uImage; bootm 0x8022c090");
+#endif
+       }
+
+#ifdef CONFIG_DUALIMAGE_SUPPORT
+		findbdr(0);
+#endif
+		s = getenv ("bootcmd");
+
+
+#ifdef CFG_DOUBLE_BOOT_FACTORY
+        char go_cmd[128] = {'\0'};
+	/* check firmware integer in boot1*/
+    if (OK == nm_api_checkInteger() && OK == load_fs_uboot())
+    {
+        sprintf(go_cmd, "go 0x%x\0", TEXT_BASE);
+    }
+    else 
+    {
+        sprintf(go_cmd, "setenv ipaddr %s; httpd\0", WEBFAILSAFE_SERVER_IP_ADDR);
+			
+#ifdef CFG_ATHRS27_PHY
+    //enable_phy_ports_all();
+    udelay(2*1000*1000); //wait eth config done
+#endif
+    }
+    s = go_cmd;
+#endif
 
 	debug ("### main_loop: bootcmd=\"%s\"\n", s ? s : "<UNDEFINED>");
 

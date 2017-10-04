@@ -2,6 +2,8 @@
  * (C) Copyright 2000-2006
  * Wolfgang Denk, DENX Software Engineering, wd@denx.de.
  *
+ * Copyright (c) 2013 Qualcomm Atheros, Inc.
+ *
  * See file CREDITS for list of people who contributed to this
  * project.
  *
@@ -31,6 +33,7 @@
 #include <malloc.h>
 #include <zlib.h>
 #include <bzlib.h>
+#include <LzmaWrapper.h>
 #include <environment.h>
 #include <asm/byteorder.h>
 
@@ -150,6 +153,124 @@ image_header_t header;
 
 ulong load_addr = CFG_LOAD_ADDR;		/* Default Load Address */
 
+#define CONFIG_LZMA 1
+
+// [pangxing] This ../include/make_flash.h is copied from make_flash project, MUST sync it with that project.
+#ifdef IMAGE_WITH_TP_TAG
+#include "make_flash.h"
+
+/* added by lqm, 18Jan08, copy from fake_zimage_header() */
+image_header_t *fake_image_header(image_header_t *hdr, ulong kernelTextAddr, ulong entryPoint, int size)
+{	
+	ulong checksum = 0;
+	memset(hdr, 0, sizeof(image_header_t));	/* Build new header */
+	hdr->ih_magic = htonl(IH_MAGIC);
+	hdr->ih_time  = 0;
+	hdr->ih_size  = htonl(size);
+	hdr->ih_load  = htonl(kernelTextAddr);
+	hdr->ih_ep    = htonl(entryPoint);
+	hdr->ih_dcrc  = htonl(checksum);
+	hdr->ih_os    = IH_OS_LINUX;
+	hdr->ih_arch  = IH_CPU_MIPS;
+	hdr->ih_type  = IH_TYPE_KERNEL;
+	hdr->ih_comp  = IH_COMP_LZMA;
+	strncpy((char *)hdr->ih_name, "(none)", IH_NMLEN);
+	hdr->ih_hcrc = htonl(checksum);
+	return hdr;
+}
+
+int do_bootm (cmd_tbl_t *cmdtp, int flag, int argc, char *argv[])
+{
+	ulong	addr;
+	ulong	data, len;
+	ulong  *len_ptr;
+	int	i, verify = 0;
+	char	*name;
+	uint	unc_len = CFG_BOOTM_LEN;
+	image_header_t *hdr = &header;
+	LINUX_FILE_TAG *fileTag; 		// by lqm, 17Sep07s
+
+	//if (argc < 2) {
+	//	addr = load_addr;
+	//} else {
+	//	addr = simple_strtoul(argv[1], NULL, 16);
+	//}
+	addr = CFG_FLASH_BASE + BOOT_KERNEL_OFFSET;
+
+	SHOW_BOOT_PROGRESS (1);
+	printf ("## Booting image at %08lx ...\n", addr);
+
+	fileTag = (LINUX_FILE_TAG*) addr;
+
+	printf("---- fileTag = %08x\n", fileTag);   
+	printf("\t text base = %08x\n", fileTag->kernelTextAddr);
+	printf("\t entry point = %08x\n", fileTag->kernelEntryPoint);
+	printf("\t hdr->ih_load = %08x\n", hdr->ih_load);
+	printf("\t hdr->ih_ep = %08x\n", hdr->ih_ep);
+
+	fake_image_header(hdr, fileTag->kernelTextAddr, fileTag->kernelEntryPoint, fileTag->kernelLen);
+
+	data = addr + TAG_LEN;
+	len = ntohl(hdr->ih_size);
+
+	SHOW_BOOT_PROGRESS (2);
+
+	name = "Kernel Image";
+	SHOW_BOOT_PROGRESS (6);
+
+	/*
+	 * We have reached the point of no return: we are going to
+	 * overwrite all exception vector code, so we cannot easily
+	 * recover from any failures any more...
+	 */
+
+/* case IH_COMP_LZMA */
+#ifdef CONFIG_LZMA
+    printf ("   Uncompressing %s at %08lx ... ", name, ntohl(hdr->ih_load));
+    i = lzma_inflate ((unsigned char *)data, len, (unsigned char*)ntohl(hdr->ih_load), &unc_len);
+	if (i != LZMA_RESULT_OK) {
+        printf ("LZMA ERROR %d - must RESET board to recover\n", i);
+        SHOW_BOOT_PROGRESS (-6);
+        udelay(100000);
+        do_reset (cmdtp, flag, argc, argv);
+    }
+#endif /* CONFIG_LZMA */
+
+	puts ("OK\n");
+	SHOW_BOOT_PROGRESS (7);
+
+
+	SHOW_BOOT_PROGRESS (8);
+
+#if defined(CONFIG_AR7100) || defined(CONFIG_AR7240) || defined(CONFIG_ATHEROS)
+	/*
+	 * Flush everything, restore caches for linux
+	 */
+	mips_cache_flush();
+	mips_icache_flush_ix();
+
+	/* XXX - this causes problems when booting from flash */
+	/* dcache_disable(); */
+#endif
+
+/*	case IH_OS_LINUX: */
+#ifdef CONFIG_SILENT_CONSOLE
+	    fixup_silent_linux();
+#endif
+
+	do_bootm_linux  (cmdtp, flag, argc, argv,
+			     addr, len_ptr, verify);
+
+	SHOW_BOOT_PROGRESS (-9);
+#ifdef DEBUG
+	puts ("\n## Control returned to monitor - resetting...\n");
+	do_reset (cmdtp, flag, argc, argv);
+#endif
+	return 1;
+}
+
+#else
+
 int do_bootm (cmd_tbl_t *cmdtp, int flag, int argc, char *argv[])
 {
 	ulong	iflag;
@@ -221,7 +342,6 @@ int do_bootm (cmd_tbl_t *cmdtp, int flag, int argc, char *argv[])
 		addr = CFG_LOAD_ADDR;
 	}
 #endif
-
 
 	/* for multi-file images we need the data part, too */
 	print_image_hdr ((image_header_t *)addr);
@@ -314,6 +434,17 @@ int do_bootm (cmd_tbl_t *cmdtp, int flag, int argc, char *argv[])
 	dcache_disable();
 #endif
 
+#if defined(CONFIG_AR7100) || defined(CONFIG_AR7240) || defined(CONFIG_ATHEROS)
+	/*
+	 * Flush everything, restore caches for linux
+	 */
+	mips_cache_flush();
+	mips_icache_flush_ix();
+
+	/* XXX - this causes problems when booting from flash */
+	/* dcache_disable(); */
+#endif
+
 	switch (hdr->ih_comp) {
 	case IH_COMP_NONE:
 		if(ntohl(hdr->ih_load) == addr) {
@@ -339,6 +470,7 @@ int do_bootm (cmd_tbl_t *cmdtp, int flag, int argc, char *argv[])
 #endif	/* CONFIG_HW_WATCHDOG || CONFIG_WATCHDOG */
 		}
 		break;
+#ifndef COMPRESSED_UBOOT
 	case IH_COMP_GZIP:
 		printf ("   Uncompressing %s ... ", name);
 		if (gunzip ((void *)ntohl(hdr->ih_load), unc_len,
@@ -367,6 +499,19 @@ int do_bootm (cmd_tbl_t *cmdtp, int flag, int argc, char *argv[])
 		}
 		break;
 #endif /* CONFIG_BZIP2 */
+#endif /* #ifndef COMPRESSED_UBOOT */
+#ifdef CONFIG_LZMA
+	case IH_COMP_LZMA:
+		printf ("   Uncompressing %s ... ", name);
+		i = lzma_inflate ((unsigned char *)data, len, (unsigned char*)ntohl(hdr->ih_load), &unc_len);
+		if (i != LZMA_RESULT_OK) {
+			printf ("LZMA ERROR %d - must RESET board to recover\n", i);
+			SHOW_BOOT_PROGRESS (-6);
+			udelay(100000);
+			do_reset (cmdtp, flag, argc, argv);
+		}
+		break;
+#endif /* CONFIG_LZMA */
 	default:
 		if (iflag)
 			enable_interrupts();
@@ -458,6 +603,8 @@ int do_bootm (cmd_tbl_t *cmdtp, int flag, int argc, char *argv[])
 #endif
 	return 1;
 }
+
+#endif
 
 U_BOOT_CMD(
  	bootm,	CFG_MAXARGS,	1,	do_bootm,
@@ -1267,6 +1414,7 @@ print_type (image_header_t *hdr)
 	case IH_COMP_NONE:	comp = "uncompressed";		break;
 	case IH_COMP_GZIP:	comp = "gzip compressed";	break;
 	case IH_COMP_BZIP2:	comp = "bzip2 compressed";	break;
+	case IH_COMP_LZMA:	comp = "lzma compressed";	break;
 	default:		comp = "unknown compression";	break;
 	}
 
@@ -1299,6 +1447,7 @@ static void zfree(void *x, void *addr, unsigned nb)
 #define RESERVED	0xe0
 
 #define DEFLATED	8
+#ifndef COMPRESSED_UBOOT
 
 int gunzip(void *dst, int dstlen, unsigned char *src, unsigned long *lenp)
 {
@@ -1361,6 +1510,7 @@ void bz_internal_error(int errcode)
 	printf ("BZIP2 internal error %d\n", errcode);
 }
 #endif /* CONFIG_BZIP2 */
+#endif /* #ifndef COMPRESSED_UBOOT */
 
 static void
 do_bootm_rtems (cmd_tbl_t *cmdtp, int flag, int argc, char *argv[],

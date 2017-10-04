@@ -6,6 +6,7 @@
  *
  * Added 16-bit nand support
  * (C) 2004 Texas Instruments
+ * Copyright (c) 2013 Qualcomm Atheros, Inc.
  */
 
 #include <common.h>
@@ -40,10 +41,15 @@ extern nand_info_t nand_info[];       /* info for NAND chips */
 
 static int nand_dump_oob(nand_info_t *nand, ulong off)
 {
-	return 0;
+	return nand_raw_dump(nand, off, 0);
 }
 
 static int nand_dump(nand_info_t *nand, ulong off)
+{
+	return nand_raw_dump(nand, off, 1);
+}
+
+static int nand_raw_dump(nand_info_t *nand, ulong off, int page)
 {
 	int i;
 	u_char *buf, *p;
@@ -63,10 +69,12 @@ static int nand_dump(nand_info_t *nand, ulong off)
 	printf("Page %08x dump:\n", off);
 	i = nand->oobblock >> 4; p = buf;
 	while (i--) {
-		printf( "\t%02x %02x %02x %02x %02x %02x %02x %02x"
-			"  %02x %02x %02x %02x %02x %02x %02x %02x\n",
-			p[0], p[1], p[2], p[3], p[4], p[5], p[6], p[7],
-			p[8], p[9], p[10], p[11], p[12], p[13], p[14], p[15]);
+		if (page) {
+			printf( "\t%02x %02x %02x %02x %02x %02x %02x %02x"
+				"  %02x %02x %02x %02x %02x %02x %02x %02x\n",
+				p[0], p[1], p[2], p[3], p[4], p[5], p[6], p[7],
+				p[8], p[9], p[10], p[11], p[12], p[13], p[14], p[15]);
+		}
 		p += 16;
 	}
 	puts("OOB:\n");
@@ -361,20 +369,25 @@ int do_nandboot(cmd_tbl_t * cmdtp, int flag, int argc, char *argv[])
 	/* Loading ok, update default load address */
 
 	load_addr = addr;
-
+#ifndef CONFIG_ATH_NAND_SUPPORT
 	/* Check if we should attempt an auto-start */
 	if (((ep = getenv("autostart")) != NULL) && (strcmp(ep, "yes") == 0)) {
+#endif
 		char *local_args[2];
 		extern int do_bootm(cmd_tbl_t *, int, int, char *[]);
 
 		local_args[0] = argv[0];
 		local_args[1] = NULL;
 
+#ifndef CONFIG_ATH_NAND_SUPPORT
 		printf("Automatic boot of image at addr 0x%08lx ...\n", addr);
+#endif
 
 		do_bootm(cmdtp, 0, 1, local_args);
 		return 1;
+#ifndef CONFIG_ATH_NAND_SUPPORT
 	}
+#endif
 	return 0;
 }
 

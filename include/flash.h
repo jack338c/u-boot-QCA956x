@@ -2,6 +2,8 @@
  * (C) Copyright 2000-2005
  * Wolfgang Denk, DENX Software Engineering, wd@denx.de.
  *
+ * Copyright (c) 2013 Qualcomm Atheros, Inc.
+ *
  * See file CREDITS for list of people who contributed to this
  * project.
  *
@@ -87,7 +89,10 @@ extern void flash_protect (int flag, ulong from, ulong to, flash_info_t *info);
 extern int flash_write (char *, ulong, ulong);
 extern flash_info_t *addr2info (ulong);
 extern int write_buff (flash_info_t *info, uchar *src, ulong addr, ulong cnt);
-
+#ifdef CFG_DOUBLE_BOOT_FACTORY
+extern int flash_erase_quiet(flash_info_t *, int, int);
+extern int write_buff_quiet(flash_info_t *info, uchar *src, ulong addr, ulong cnt);
+#endif
 /* board/?/flash.c */
 #if defined(CFG_FLASH_PROTECTION)
 extern int flash_real_protect(flash_info_t *info, long sector, int prot);
@@ -415,6 +420,8 @@ extern void flash_read_factory_serial(flash_info_t * info, void * buffer, int of
 #define FLASH_FUJLV650	0x00D0		/* Fujitsu MBM 29LV650UE/651UE		*/
 #define FLASH_MT28S4M16LC 0x00E1	/* Micron MT28S4M16LC			*/
 #define FLASH_S29GL064M 0x00F0		/* Spansion S29GL064M-R6		*/
+
+#define FLASH_M25P64    0x00F2      
 
 #define FLASH_UNKNOWN	0xFFFF		/* unknown flash type			*/
 

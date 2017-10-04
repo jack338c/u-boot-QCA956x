@@ -2,6 +2,8 @@
  * (C) Copyright 2000
  * Wolfgang Denk, DENX Software Engineering, wd@denx.de.
  *
+ * Copyright (c) 2013 Qualcomm Atheros, Inc.
+ *
  * See file CREDITS for list of people who contributed to this
  * project.
  *
@@ -35,6 +37,7 @@
 #ifdef CONFIG_HAS_DATAFLASH
 #include <dataflash.h>
 #endif
+#include "defines.h"
 
 #if (CONFIG_COMMANDS & (CFG_CMD_MEMORY	| \
 			CFG_CMD_I2C	| \
@@ -312,7 +315,7 @@ int do_mem_mwc ( cmd_tbl_t *cmdtp, int flag, int argc, char *argv[])
 	return 0;
 }
 #endif /* CONFIG_MX_CYCLIC */
-
+#ifndef COMPRESSED_UBOOT
 int do_mem_cmp (cmd_tbl_t *cmdtp, int flag, int argc, char *argv[])
 {
 	ulong	addr1, addr2, count, ngood;
@@ -390,6 +393,8 @@ int do_mem_cmp (cmd_tbl_t *cmdtp, int flag, int argc, char *argv[])
 		ngood == 1 ? "" : "s");
 	return rcode;
 }
+#endif /* #ifndef COMPRESSED_UBOOT  */
+
 
 int do_mem_cp ( cmd_tbl_t *cmdtp, int flag, int argc, char *argv[])
 {
@@ -419,7 +424,7 @@ int do_mem_cp ( cmd_tbl_t *cmdtp, int flag, int argc, char *argv[])
 		return 1;
 	}
 
-#ifndef CFG_NO_FLASH
+#if !defined(CFG_NO_FLASH) && !defined(CONFIG_ATH_NAND_BR)
 	/* check if we are copying to Flash */
 	if ( (addr2info(dest) != NULL)
 #ifdef CONFIG_HAS_DATAFLASH
@@ -527,6 +532,8 @@ int do_mem_cp ( cmd_tbl_t *cmdtp, int flag, int argc, char *argv[])
 	return 0;
 }
 
+
+#ifndef COMPRESSED_UBOOT
 int do_mem_base (cmd_tbl_t *cmdtp, int flag, int argc, char *argv[])
 {
 	if (argc > 1) {
@@ -684,12 +691,165 @@ int do_mem_loopw (cmd_tbl_t *cmdtp, int flag, int argc, char *argv[])
 	}
 }
 #endif /* CONFIG_LOOPW */
+#endif /* #ifndef COMPRESSED_UBOOT */
+
+int test_DDR(vu_long *start, vu_long *end, ulong pattern)
+{
+    vu_long *addr;
+    ulong   readback;
+    ulong   val;
+    int rcode = 0;
+
+
+    printf ("\rPattern %08lX  Writing..."
+    "%12s"
+    "\b\b\b\b\b\b\b\b\b\b",
+    pattern, "");
+
+    for (addr=start,val=pattern; addr<end; addr++) {
+        *addr = val;
+    }
+
+    puts ("Reading...");
+
+    for (addr=start,val=pattern; addr<end; addr++) {
+        readback = *addr;
+        if (readback != val) {
+            printf ("\nMem error @ 0x%08X: "
+                "found %08lX, expected %08lX\n",
+                (uint)addr, readback, val);
+            rcode = 1;
+        }
+    }
+
+    return rcode;
+}
+
+
+int shell_cmdMtest(int argc, char *argv[])
+{
+    vu_long *addr, *start, *end;
+    vu_long pattern1=0x5555AAAA, pattern2=0x2222DDDD;
+    ulong   val;
+    ulong   readback;
+    ulong   val1 = 0, val2 = 0, val3 = 0, val4 = 0;
+    ulong   use1 = 0, use2 = 0, use3 = 0, use4 = 0;
+
+    int     rcode = 0;
+    int     loop = 0;
+    int     temp = 1;
+    /*
+    printf("CFG_MEMTEST_START = %#x, CFG_MEMTEST_END=%#x\n",
+            CFG_MEMTEST_START, CFG_MEMTEST_END);
+    */
+    printf("ready run mtest\n");
+    if (argc > 1) {
+        start = (ulong *)simple_strtoul(argv[1], NULL, 16);
+    } else {
+        start = (ulong *)CFG_MEMTEST_START;
+    }
+
+    if (argc > 2) {
+        end = (ulong *)simple_strtoul(argv[2], NULL, 16);
+    } else {
+        end = (ulong *)(CFG_MEMTEST_END);
+    }
+
+    if (argc > 3) {
+        loop = (ulong)simple_strtoul(argv[3], NULL, 16);
+        printf("loop = %#x\n", loop);
+    }
+    if(0 == loop )
+    {
+        loop = 1;
+        printf("loop = %#x\n", loop);
+    }
+
+    if (argc > 4) {
+        val1 = (ulong)simple_strtoul(argv[4], NULL, 16);
+        use1 = 1;
+        printf("data0 = %#x\n", val1);
+    } else {
+        val1 = 0;
+    }
+
+    if (argc > 5) {
+        val2 = (ulong)simple_strtoul(argv[5], NULL, 16);
+        use2 = 1;
+        printf("data1 = %#x\n", val2);
+    } else {
+        val2 = 0;
+    }
+
+    if (argc > 6) {
+        val3 = (ulong)simple_strtoul(argv[6], NULL, 16);
+        use3 = 1;
+        printf("data2 = %#x\n", val3);
+    } else {
+        val3 = 0;
+    }
+
+    if (argc > 7) {
+        val4 = (ulong)simple_strtoul(argv[7], NULL, 16);
+        use4 = 1;
+        printf("data3 = %#x\n", val4);
+    } else {
+        val4 = 0;
+    }
+
+    printf("memtest addr: %x - %x\n", (ulong)start, (ulong)end);
+
+    for (; temp<=loop; temp++)
+    {
+        if (ctrlc())
+        {
+            puts ("\n");
+            return 1;
+        }
+        /*
+        rcode = test_DDR(start, end, 0x5555AAAA);
+        rcode = test_DDR(start, end, 0x2222DDDD);
+        rcode = test_DDR(start, end, 0x1111FFFF);
+        rcode = test_DDR(start, end, 0X0000EEEE);
+        rcode = test_DDR(start, end, 0X2222FFFF);
+        rcode = test_DDR(start, end, 0X0000DDDD);
+        rcode = test_DDR(start, end, 0X4444FFFF);
+        rcode = test_DDR(start, end, 0X0000BBBB);
+        rcode = test_DDR(start, end, 0X8888FFFF);
+        rcode = test_DDR(start, end, 0X00007777);
+        */
+        rcode = test_DDR(start, end, 0x0000FEFE);
+        rcode = test_DDR(start, end, 0x0000FDFD);
+        rcode = test_DDR(start, end, 0x0000FBFB);
+        rcode = test_DDR(start, end, 0x0000F7F7);
+        rcode = test_DDR(start, end, 0x0000EFEF);
+        rcode = test_DDR(start, end, 0x0000DFDF);
+        rcode = test_DDR(start, end, 0x0000BFBF);
+        rcode = test_DDR(start, end, 0x00007F7F);
+        rcode = test_DDR(start, end, 0x0101FFFF);
+        rcode = test_DDR(start, end, 0x0202FFFF);
+        rcode = test_DDR(start, end, 0x0404FFFF);
+        rcode = test_DDR(start, end, 0x0808FFFF);
+        rcode = test_DDR(start, end, 0x1010FFFF);
+        rcode = test_DDR(start, end, 0x2020FFFF);
+        rcode = test_DDR(start, end, 0x4040FFFF);
+        rcode = test_DDR(start, end, 0x8080FFFF);
+    }
+    return rcode;
+}
+
 
 /*
  * Perform a memory test. A more complete alternative test can be
  * configured using CFG_ALT_MEMTEST. The complete test loops until
  * interrupted by ctrl-c or by a failure of one of the sub-tests.
  */
+ int do_mem_mtest (cmd_tbl_t *cmdtp, int flag, int argc, char *argv[])
+{
+    shell_cmdMtest(argc, argv);
+    return 0;
+}
+#if 0
 int do_mem_mtest (cmd_tbl_t *cmdtp, int flag, int argc, char *argv[])
 {
 	vu_long	*addr, *start, *end;
@@ -993,6 +1153,7 @@ int do_mem_mtest (cmd_tbl_t *cmdtp, int flag, int argc, char *argv[])
 	return rcode;
 #endif
 }
+#endif
 
 
 /* Modify memory.
@@ -1098,6 +1259,9 @@ mod_mem(cmd_tbl_t *cmdtp, int incrflag, int flag, int argc, char *argv[])
 	return 0;
 }
 
+
+
+#ifndef COMPRESSED_UBOOT
 #ifndef CONFIG_CRC32_VERIFY
 
 int do_mem_crc (cmd_tbl_t *cmdtp, int flag, int argc, char *argv[])
@@ -1185,40 +1349,6 @@ int do_mem_crc (cmd_tbl_t *cmdtp, int flag, int argc, char *argv[])
 }
 #endif	/* CONFIG_CRC32_VERIFY */
 
-/**************************************************/
-#if (CONFIG_COMMANDS & CFG_CMD_MEMORY)
-U_BOOT_CMD(
-	md,     3,     1,      do_mem_md,
-	"md      - memory display\n",
-	"[.b, .w, .l] address [# of objects]\n    - memory display\n"
-);
-
-
-U_BOOT_CMD(
-	mm,     2,      1,       do_mem_mm,
-	"mm      - memory modify (auto-incrementing)\n",
-	"[.b, .w, .l] address\n" "    - memory modify, auto increment address\n"
-);
-
-
-U_BOOT_CMD(
-	nm,     2,	    1,     	do_mem_nm,
-	"nm      - memory modify (constant address)\n",
-	"[.b, .w, .l] address\n    - memory modify, read and keep address\n"
-);
-
-U_BOOT_CMD(
-	mw,    4,    1,     do_mem_mw,
-	"mw      - memory write (fill)\n",
-	"[.b, .w, .l] address value [count]\n    - write memory\n"
-);
-
-U_BOOT_CMD(
-	cp,    4,    1,    do_mem_cp,
-	"cp      - memory copy\n",
-	"[.b, .w, .l] source target count\n    - copy memory\n"
-);
-
 U_BOOT_CMD(
 	cmp,    4,     1,     do_mem_cmp,
 	"cmp     - memory compare\n",
@@ -1267,12 +1397,6 @@ U_BOOT_CMD(
 );
 #endif /* CONFIG_LOOPW */
 
-U_BOOT_CMD(
-	mtest,    4,    1,     do_mem_mtest,
-	"mtest   - simple RAM test\n",
-	"[start [end [pattern]]]\n"
-	"    - simple RAM read/write test\n"
-);
 
 #ifdef CONFIG_MX_CYCLIC
 U_BOOT_CMD(
@@ -1288,5 +1412,373 @@ U_BOOT_CMD(
 );
 #endif /* CONFIG_MX_CYCLIC */
 
-#endif
+#endif /* #ifndef COMPRESSED_UBOOT */
+#define AR7240_DDR_SIZE_INCR    (4*1024*1024)
+
+/*
+ * Function Prototype
+ */
+int test_algorithm_t   (unsigned int mem_type, unsigned int pattern);
+
+/*
+ * Local Variables in this file
+ */
+static unsigned int init_state = 1;
+
+static unsigned int TEST_SIZE;
+static unsigned int START_M_ADDR, START_C_ADDR;
+static unsigned int END_M_ADDR,   END_C_ADDR;
+
+/* Test Patterns */
+static unsigned int base_pattern[DATA_PATTERN_NUM];
+
+/* Variables for random pattern */
+static unsigned int dword_random_seed, dword_random_inc, hword_random_seed, hword_random_inc, byte_random_seed, byte_random_inc;
+
+/* Variables for statistics */
+static unsigned int curr_round;
+static unsigned int fail_round, mt_fail_round, ct_fail_round;
+
+/* Variables Per round */
+static unsigned int fail_status, mt_fail_status, ct_fail_status;
+
+/* Temporary Variables */
+static unsigned int START_ADDR, END_ADDR;
+
+int do_mem_mct (cmd_tbl_t *cmdtp, int flag, int argc, char *argv[])
+{
+	unsigned char   *p = (unsigned char *)KSEG1, pat = 0x77;
+	unsigned int    i;
+	unsigned long	size = 0;
+
+	if (argc > 1) {
+		size = simple_strtoul(argv[1], NULL, 16);
+	}
+
+	/* Clean all information memory locations */
+	for (i = 0; i < 0xb0; i+=4) {
+		*(unsigned int *)(INFO_BASE_ADDR +i) = 0x0;
+	}
+
+    /* Determine the size of DDR/DDR2/SDRAM */
+    *p = pat;
+
+    /*
+     * For x32 mode(2 DDR devices on board), Scorpion can support 2 128MB DDR and maximum memory size is 256MB(Wasp can support 2 64MB DDR and maximum memory size is 128MB).
+     * In chip design, only 256MB address space can be used by DDR
+     * Therefore, max. size of DDR is 256MB
+     */
+    for (i = 1; i < 64; i++) {
+        *(p + i * AR7240_DDR_SIZE_INCR) = (unsigned char)(i);
+        if (*p != pat) {
+            break;
+        }
+    }
+
+    TEST_SIZE    = size;
+    START_M_ADDR = KSEG1 + 0x50000;
+    END_M_ADDR   = START_M_ADDR + TEST_SIZE;
+    START_C_ADDR = KSEG0 + 0x50000;
+    END_C_ADDR   = START_C_ADDR + TEST_SIZE;
+
+    /* Record general information */
+    *(unsigned int *)(INFO_SIZE_ADDR)       = TEST_SIZE;
+    *(unsigned int *)(INFO_MEM_START_ADDR)  = START_M_ADDR;
+    *(unsigned int *)(INFO_MEM_END_ADDR)    = END_M_ADDR;
+    *(unsigned int *)(INFO_CACHE_START_ADDR)= START_C_ADDR;
+    *(unsigned int *)(INFO_CACHE_END_ADDR)  = END_C_ADDR;
+
+    /* Initialize variables before test begins */
+    curr_round = 0;
+    fail_round = mt_fail_round = ct_fail_round = 0;
+
+    for (i = 0; i < DATA_PATTERN_NUM; i++)
+        base_pattern[i] = 0x0;
+
+    /* Pattern 1 : Random     */
+    /* Pattern 2 : Address    */
+    /* Pattern 3 : 0xffffffff */
+    base_pattern[0] = 1; /* Random  */
+    base_pattern[1] = 2; /* Address */
+    base_pattern[2] = 0xffffffff;
+
+    /* Initialize variables for random pattern */
+    dword_random_seed   = 0xa83f0365;
+    dword_random_inc    = 0x185fe2d1;
+
+    hword_random_seed   = 0x4f9516e3;
+    hword_random_inc    = 0x143c2b7d;
+
+    byte_random_seed    = 0xa83f0365;
+    byte_random_inc     = 0x185fe2d1;
+
+    while (1) {
+        /* Initialize variables before current round begins */
+        mt_fail_status = ct_fail_status = 0;
+
+        *(unsigned int *)(INFO_MT_ADDR)    = 0;
+        *(unsigned int *)(INFO_CT_ADDR)    = 0;
+
+        curr_round++;
+
+        printf("***Round %d***\n", curr_round);
+
+        /* +++ MT    +++ */
+        printf("2. Memory Test <MT>\n");
+
+        *(unsigned int *)(INFO_MT_ADDR) = 1;
+
+        for (i = 0; i < DATA_PATTERN_NUM; i++) {
+            if (base_pattern[i] == 0x0)
+                break;
+
+            if (base_pattern[i] == 0x1) {
+                if (!DISABLE_UART) {
+                    printf("~Pattern 1 : Random(seed 0x%08x)\n", dword_random_seed);
+                }
+            }
+            else if (base_pattern[i] == 0x2) {
+                if (!DISABLE_UART) {
+                    printf("~Pattern 2 : Address\n");
+                }
+            }
+            else {
+                if (!DISABLE_UART) {
+                    printf("~Pattern %d : 0x%08x\n", i+1, base_pattern[i]);
+                }
+            }
+            *(unsigned int *)(INFO_MT_PAT_ADDR) = i+1;
+
+            if(test_algorithm_t(0, base_pattern[i]))
+			return 1;
+        }
+        /* --- MT    --- */
+
+        /* +++ CT    +++ */
+        printf("4. Cache Test <CT>\n");
+
+        *(unsigned int *)(INFO_CT_ADDR) = 1;
+
+        for (i = 0; i < DATA_PATTERN_NUM; i++) {
+            if (base_pattern[i] == 0x0)
+                break;
+
+            if (base_pattern[i] == 0x1) {
+                printf("~Pattern 1 : Random(seed 0x%08x)\n", dword_random_seed);
+            }
+            else if (base_pattern[i] == 0x2) {
+                printf("~Pattern 2 : Address\n");
+            }
+            else {
+                printf("~Pattern %d : 0x%08x\n", i+1, base_pattern[i]);
+            }
+
+            *(unsigned int *)(INFO_CT_PAT_ADDR) = i+1;
+
+            if(test_algorithm_t(1, base_pattern[i]))
+			return 1;
+        }
+        /* --- CT    --- */
+
+        /* Update Statistics*/
+        *(unsigned int *)(INFO_GEN_ADDR) = curr_round;
+
+        if (mt_fail_status || ct_fail_status) {
+            if (mt_fail_status) {
+                mt_fail_round++;
+                *(unsigned int *)(INFO_FAIL_MT_ADDR) = mt_fail_round;
+            }
+            if (ct_fail_status) {
+                ct_fail_round++;
+                *(unsigned int *)(INFO_FAIL_CT_ADDR) = ct_fail_round;
+            }
+            fail_round++;
+            *(unsigned int *)(INFO_FAIL_ADDR) = fail_round;
+        }
+	flush_cache(START_C_ADDR, TEST_SIZE);
+    } /* End of while (1) */
+}
+
+/*
+ * mem_type : 0 for memory, 1 for cache
+ */
+int test_algorithm_t(unsigned int mem_type, unsigned int pattern)
+{
+    unsigned int i;
+    unsigned int stride, offset;
+    unsigned int check_addr, check_data, check_pattern;
+    unsigned int add_as_data;
+
+    fail_status = 0;
+
+    if (!mem_type) {
+        START_ADDR = START_M_ADDR;
+        END_ADDR   = END_M_ADDR;
+    }
+    else {
+        START_ADDR = START_C_ADDR;
+        END_ADDR   = END_C_ADDR;
+    }
+
+    if (pattern == 2) {
+        add_as_data = 1;
+        pattern     = 0;
+    }
+    else {
+        add_as_data = 0;
+        if (pattern == 1) {
+            pattern = dword_random_seed;
+        }
+    }
+
+    for (i = 0; i < TEST_SIZE; i += 4) {
+        *(unsigned int *)(START_ADDR+i) = add_as_data ? (pattern ^ (START_ADDR + i)) : pattern;
+    }
+
+    for (stride = 4; stride < TEST_SIZE; stride *= 2) {
+        for (offset = 0; offset < stride; offset += 4) {
+            for (i = offset; i < TEST_SIZE; i += stride) {
+		if (ctrlc()) {
+			puts ("Stop MCT\n");
+			return 1;
+		}
+                check_addr = START_ADDR + i;
+                check_data = *(unsigned int *)check_addr;
+                check_pattern = (add_as_data ? (pattern ^ check_addr) : pattern);
+
+                if (check_data != check_pattern) {
+                    if (!mem_type)
+                        mt_fail_status = 1;
+                    else
+                        ct_fail_status = 1;
+
+                    fail_status = 1;
+
+                    *(unsigned int *)(INFO_ERROR_T_ADDR)         = 1;
+                    *(unsigned int *)(INFO_ERROR_T_INVERSE_ADDR) = 0;
+                    *(unsigned int *)(INFO_ERROR_T_STRIDE_ADDR)  = stride;
+                    *(unsigned int *)(INFO_ERROR_T_OFFSET_ADDR)  = offset;
+                    *(unsigned int *)(INFO_ERROR_T_ADR_ADDR)     = check_addr;
+                    *(unsigned int *)(INFO_ERROR_T_DATA_ADDR)    = check_data;
+                    *(unsigned int *)(INFO_ERROR_T_EDATA_ADDR)   = check_pattern;
+
+                    printf("Fail! --> addr 0x%08x, data 0x%08x(should be 0x%08x), stride 0x%08x\n", check_addr, check_data, check_pattern, stride);
+
+                    #if DISCARD_ERROR
+                    *(unsigned int *)check_addr = check_pattern;
+                    #else
+                    while (1) {
+				if (ctrlc()) {
+					puts ("Stop MCT\n");
+					return 1;
+				}
+                    }   //asm("nop");
+                    #endif
+                }
+
+                *(unsigned int *)check_addr = ~check_pattern;
+            } /* End of "for (i = offset; i < TEST_SIZE; i += stride)" */
+        } /* End of "for (offset = 0; offset < stride; offset += 4)" */
+
+        pattern = ~pattern;
+
+        for (offset = 0; offset < stride; offset += 4) {
+            for (i = offset; i < TEST_SIZE; i += stride) {
+                check_addr = START_ADDR + i; //check_addr = START_ADDR + TEST_SIZE - i - 4;
+                check_pattern = (add_as_data ? (pattern ^ check_addr) : pattern);
+                check_data = *(unsigned int *)check_addr;
+
+                if (check_data != check_pattern) {
+                    if (!mem_type)
+                        mt_fail_status = 1;
+                    else
+                        ct_fail_status = 1;
+
+                    fail_status = 1;
+
+                    *(unsigned int *)(INFO_ERROR_T_ADDR)         = 1;
+                    *(unsigned int *)(INFO_ERROR_T_INVERSE_ADDR) = 1;
+                    *(unsigned int *)(INFO_ERROR_T_STRIDE_ADDR)  = stride;
+                    *(unsigned int *)(INFO_ERROR_T_OFFSET_ADDR)  = offset;
+                    *(unsigned int *)(INFO_ERROR_T_ADR_ADDR)     = check_addr;
+                    *(unsigned int *)(INFO_ERROR_T_DATA_ADDR)    = check_data;
+                    *(unsigned int *)(INFO_ERROR_T_EDATA_ADDR)   = check_pattern;
+
+                    printf("Inverse Fail! --> addr 0x%08x, data 0x%08x(should be 0x%08x), stride 0x%08x\n", check_addr, check_data, check_pattern, stride);
+
+                    #if DISCARD_ERROR
+                    *(unsigned int *)check_addr = check_pattern;
+                    #else
+                    while (1) {
+				if (ctrlc()) {
+					puts ("Stop MCT\n");
+					return 1;
+				}
+                    }   //asm("nop");
+                    #endif
+                }
+                *(unsigned int *)check_addr = ~check_pattern;
+            } /* End if "for (i = offset; i < TEST_SIZE; i += stride)" */
+        } /* End of "for (offset = 0; offset < stride; offset += 4)" */
+
+        pattern = ~pattern;
+    } /* End of "for (stride = 4; stride < TEST_SIZE; stride *= 2)" */
+
+    if (!fail_status) {
+        printf("Pass\n");
+    }
+
+    /* Random seed changes */
+    dword_random_seed += 0x01010101;
+    dword_random_seed += dword_random_inc;
+	return 0;
+}
+
+/**************************************************/
+U_BOOT_CMD(
+	md,     3,     1,      do_mem_md,
+	"md      - memory display\n",
+	"[.b, .w, .l] address [# of objects]\n    - memory display\n"
+);
+
+
+U_BOOT_CMD(
+	mm,     2,      1,       do_mem_mm,
+	"mm      - memory modify (auto-incrementing)\n",
+	"[.b, .w, .l] address\n" "    - memory modify, auto increment address\n"
+);
+
+
+U_BOOT_CMD(
+	nm,     2,	    1,     	do_mem_nm,
+	"nm      - memory modify (constant address)\n",
+	"[.b, .w, .l] address\n    - memory modify, read and keep address\n"
+);
+
+U_BOOT_CMD(
+	mw,    4,    1,     do_mem_mw,
+	"mw      - memory write (fill)\n",
+	"[.b, .w, .l] address value [count]\n    - write memory\n"
+);
+
+U_BOOT_CMD(
+	mtest,    4,    1,     do_mem_mtest,
+	"mtest   - simple RAM test\n",
+	"[start [end [pattern]]]\n"
+	"    - simple RAM read/write test\n"
+);
+
+U_BOOT_CMD(
+	cp,    4,    1,    do_mem_cp,
+	"cp      - memory copy\n",
+	"[.b, .w, .l] source target count\n    - copy memory\n"
+);
+
+U_BOOT_CMD(
+	mct,    2,    1,     do_mem_mct,
+	"mct   - simple RAM test\n",
+	"\n"
+	"\n"
+);
+
 #endif	/* CFG_CMD_MEMORY */

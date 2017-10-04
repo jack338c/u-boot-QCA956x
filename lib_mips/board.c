@@ -2,6 +2,8 @@
  * (C) Copyright 2003
  * Wolfgang Denk, DENX Software Engineering, wd@denx.de.
  *
+ * Copyright (c) 2013 Qualcomm Atheros, Inc.
+ *
  * See file CREDITS for list of people who contributed to this
  * project.
  *
@@ -28,6 +30,7 @@
 #include <version.h>
 #include <net.h>
 #include <environment.h>
+#include "blinkLed.h"
 
 DECLARE_GLOBAL_DATA_PTR;
 
@@ -44,6 +47,13 @@ DECLARE_GLOBAL_DATA_PTR;
 extern int timer_init(void);
 
 extern int incaip_set_cpuclk(void);
+
+#if defined(CONFIG_WASP_SUPPORT) || defined(CONFIG_MACH_QCA955x) || defined(CONFIG_MACH_QCA953x) || defined(CONFIG_MACH_QCA956x)
+void ath_set_tuning_caps(void);
+#else
+#define ath_set_tuning_caps()	/* nothing */
+#endif
+
 
 extern ulong uboot_end_data;
 extern ulong uboot_end;
@@ -159,17 +169,23 @@ static int init_baudrate (void)
 typedef int (init_fnc_t) (void);
 
 init_fnc_t *init_sequence[] = {
+#ifndef COMPRESSED_UBOOT
 	timer_init,
+#endif
 	env_init,		/* initialize environment */
 #ifdef CONFIG_INCA_IP
 	incaip_set_cpuclk,	/* set cpu clock according to environment variable */
 #endif
 	init_baudrate,		/* initialze baudrate settings */
+#ifndef COMPRESSED_UBOOT
 	serial_init,		/* serial communications setup */
+#endif
 	console_init_f,
 	display_banner,		/* say that we are here */
+#ifndef COMPRESSED_UBOOT
 	checkboard,
 	init_func_ram,
+#endif
 	NULL,
 };
 
@@ -181,6 +197,9 @@ void board_init_f(ulong bootflag)
 	init_fnc_t **init_fnc_ptr;
 	ulong addr, addr_sp, len = (ulong)&uboot_end - CFG_MONITOR_BASE;
 	ulong *s;
+#ifdef COMPRESSED_UBOOT
+        char board_string[50];
+#endif
 #ifdef CONFIG_PURPLE
 	void copy_code (ulong);
 #endif
@@ -198,6 +217,14 @@ void board_init_f(ulong bootflag)
 			hang ();
 		}
 	}
+
+#ifdef COMPRESSED_UBOOT
+        checkboard(board_string);
+        printf("%s\n\n",board_string);
+        gd->ram_size = bootflag;
+	puts ("DRAM:  ");
+	print_size (gd->ram_size, "\n");
+#endif
 
 	/*
 	 * Now that we have DRAM mapped and working, we can
@@ -301,9 +328,13 @@ void board_init_r (gd_t *id, ulong dest_addr)
 #ifndef CFG_ENV_IS_NOWHERE
 	extern char * env_name_spec;
 #endif
+#ifdef CONFIG_ATH_NAND_SUPPORT
+	extern ulong ath_nand_init(void);
+#endif
 	char *s, *e;
 	bd_t *bd;
 	int i;
+	uint32_t val;
 
 	gd = id;
 	gd->flags |= GD_FLG_RELOC;	/* tell others: relocation done */
@@ -346,10 +377,18 @@ void board_init_r (gd_t *id, ulong dest_addr)
 #ifndef CFG_ENV_IS_NOWHERE
 	env_name_spec += gd->reloc_off;
 #endif
+	blinkLeds();
+	/* disable JTAG */
+#if JTAG_DEBUG_DISABLE
+	ath_reg_rmw_set(GPIO_FUNCTION_ADDRESS,
+			GPIO_FUNCTION_DISABLE_JTAG_SET(0x1));
+#endif
 
+#ifndef CONFIG_ATH_NAND_BR
 	/* configure available FLASH banks */
 	size = flash_init();
 	display_flash_config (size);
+#endif
 
 	bd = gd->bd;
 	bd->bi_flashstart = CFG_FLASH_BASE;
@@ -363,6 +402,10 @@ void board_init_r (gd_t *id, ulong dest_addr)
 	/* initialize malloc() area */
 	mem_malloc_init();
 	malloc_bin_reloc();
+
+#ifdef CONFIG_ATH_NAND_BR
+	ath_nand_init();
+#endif
 
 	/* relocate environment function pointers etc. */
 	env_relocate();
@@ -415,6 +458,31 @@ void board_init_r (gd_t *id, ulong dest_addr)
 	puts ("Net:   ");
 #endif
 	eth_initialize(gd->bd);
+#endif
+
+#if defined(CONFIG_ATH_NAND_SUPPORT) && !defined(CONFIG_ATH_NAND_BR)
+	ath_nand_init();
+#endif
+
+#if defined(CONFIG_WPA8730_V1) && defined(CONFIG_ATHR_8033_PHY)
+     /* nothing */  	 
+#else
+	ath_set_tuning_caps(); /* Needed here not to mess with Ethernet clocks */
+#endif
+
+#if defined(ETH_HW_LED)
+#if defined(CONFIG_WDR6500_V2) || defined(CONFIG_WDR5500_V2)
+	ath_reg_rmw_set(GPIO_OUT_FUNCTION3_ADDRESS,
+			GPIO_OUT_FUNCTION3_ENABLE_GPIO_14_SET(GPIO_FUNCTION_LED_LINK_O_3));
+	ath_reg_rmw_set(GPIO_OUT_FUNCTION3_ADDRESS,
+			GPIO_OUT_FUNCTION3_ENABLE_GPIO_15_SET(GPIO_FUNCTION_LED_LINK_O_2));
+	ath_reg_rmw_set(GPIO_OUT_FUNCTION4_ADDRESS,
+			GPIO_OUT_FUNCTION4_ENABLE_GPIO_16_SET(GPIO_FUNCTION_LED_LINK_O_1));
+	ath_reg_rmw_set(GPIO_OUT_FUNCTION4_ADDRESS,
+			GPIO_OUT_FUNCTION4_ENABLE_GPIO_17_SET(GPIO_FUNCTION_LED_LINK_O_0));
+	ath_reg_rmw_set(GPIO_OUT_FUNCTION4_ADDRESS,
+			GPIO_OUT_FUNCTION4_ENABLE_GPIO_18_SET(GPIO_FUNCTION_LED_LINK_O_4));
+#endif
 #endif
 
 	/* main_loop() can return to retry autoboot, if so just run it again. */

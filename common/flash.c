@@ -185,6 +185,61 @@ flash_write (char *src, ulong addr, ulong cnt)
 #endif /* CONFIG_SPD823TS */
 }
 
+#ifdef CFG_DOUBLE_BOOT_FACTORY
+int nvrammngr_flashOpPortWrite(unsigned int off, unsigned int datalen, unsigned char *in)
+{
+#ifdef CONFIG_SPD823TS
+    return (ERR_TIMOUT);    /* any other error codes are possible as well */
+#else
+    char *src  = (char *)in;
+    ulong addr = (ulong)off;
+    ulong cnt  = (ulong)datalen;
+
+    int i;
+    ulong         end        = addr + cnt - 1;
+    flash_info_t *info_first = addr2info (addr);
+    flash_info_t *info_last  = addr2info (end );
+    flash_info_t *info;
+
+    if (cnt == 0) {
+        return (ERR_OK);
+    }
+
+    if (!info_first || !info_last) {
+        return (ERR_INVAL);
+    }
+
+    for (info = info_first; info <= info_last; ++info) {
+        ulong b_end = info->start[0] + info->size;  /* bank end addr */
+        short s_end = info->sector_count - 1;
+        for (i=0; i<info->sector_count; ++i) {
+            ulong e_addr = (i == s_end) ? b_end : info->start[i + 1];
+
+            if ((end >= info->start[i]) && (addr < e_addr) &&
+                (info->protect[i] != 0) ) {
+                return (ERR_PROTECTED);
+            }
+        }
+    }
+
+    /* finally write data to flash */
+    for (info = info_first; info <= info_last && cnt>0; ++info) {
+        ulong len;
+
+        len = info->start[0] + info->size - addr;
+        if (len > cnt)
+            len = cnt;
+        if ((i = write_buff_quiet(info, (uchar *)src, addr, len)) != 0) {
+            return (i);
+        }
+        cnt  -= len;
+        addr += len;
+        src  += len;
+    }
+    return (ERR_OK);
+#endif /* CONFIG_SPD823TS */
+}
+#endif
 /*-----------------------------------------------------------------------
  */
 

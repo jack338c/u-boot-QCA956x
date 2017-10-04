@@ -2,6 +2,8 @@
  * (C) Copyright 2000
  * Wolfgang Denk, DENX Software Engineering, wd@denx.de.
  *
+ * Copyright (c) 2013 Qualcomm Atheros, Inc.
+ *
  * See file CREDITS for list of people who contributed to this
  * project.
  *
@@ -277,6 +279,7 @@ flash_fill_sect_ranges (ulong addr_first, ulong addr_last,
 	return rcode;
 }
 
+#ifndef COMPRESSED_UBOOT
 int do_flinfo ( cmd_tbl_t *cmdtp, int flag, int argc, char *argv[])
 {
 	ulong bank;
@@ -304,6 +307,7 @@ int do_flinfo ( cmd_tbl_t *cmdtp, int flag, int argc, char *argv[])
 	flash_print_info (&flash_info[bank-1]);
 	return 0;
 }
+#endif /* #ifndef COMPRESSED_UBOOT */
 
 int do_flerase (cmd_tbl_t *cmdtp, int flag, int argc, char *argv[])
 {
@@ -440,7 +444,56 @@ int flash_sect_erase (ulong addr_first, ulong addr_last)
 	}
 	return rcode;
 }
+#ifdef CFG_DOUBLE_BOOT_FACTORY
+int nvrammngr_flashOpPortErase(unsigned int off, unsigned int len)
+{
+	flash_info_t *info;
+	ulong bank;
+#ifdef CFG_MAX_FLASH_BANKS_DETECT
+	int s_first[CFG_MAX_FLASH_BANKS_DETECT], s_last[CFG_MAX_FLASH_BANKS_DETECT];
+#else
+	int s_first[CFG_MAX_FLASH_BANKS], s_last[CFG_MAX_FLASH_BANKS];
+#endif
+	int erased = 0;
+	int planned;
+	int rcode = 0;
 
+    ulong addr_first = off;
+    ulong addr_last  = off + len - 1;
+
+	rcode = flash_fill_sect_ranges (addr_first, addr_last,
+					s_first, s_last, &planned );
+
+	if (planned && (rcode == 0)) {
+		for (bank=0,info=&flash_info[0];
+		     (bank < CFG_MAX_FLASH_BANKS) && (rcode == 0);
+		     ++bank, ++info) {
+			if (s_first[bank]>=0) {
+				erased += s_last[bank] - s_first[bank] + 1;
+#ifdef FLASH_DEBUG
+				debug ("Erase Flash from 0x%08lx to 0x%08lx "
+					"in Bank # %ld ",
+					info->start[s_first[bank]],
+					(s_last[bank] == info->sector_count) ?
+						info->start[0] + info->size - 1:
+						info->start[s_last[bank]+1] - 1,
+					bank+1);
+#else
+				//printf( "Erasing flash... ");
+#endif
+				rcode = flash_erase_quiet(info, s_first[bank], s_last[bank]);
+			}
+		}
+		//printf ("Erased %d sectors\n", erased);
+	} else if (rcode == 0) {
+		//puts ("Error: start and/or end address" " not on sector boundary\n");
+		rcode = 1;
+	}
+	return rcode;
+}
+#endif
+
+#ifndef COMPRESSED_UBOOT
 int do_protect (cmd_tbl_t *cmdtp, int flag, int argc, char *argv[])
 {
 	flash_info_t *info;
@@ -670,6 +723,7 @@ int flash_sect_protect (int p, ulong addr_first, ulong addr_last)
 	}
 	return rcode;
 }
+#endif /* #ifndef COMPRESSED_UBOOT */
 
 
 /**************************************************/
@@ -683,25 +737,12 @@ int flash_sect_protect (int p, ulong addr_first, ulong addr_last)
 # define TMP_PROT_OFF	/* empty */
 #endif
 
+#ifndef COMPRESSED_UBOOT
 U_BOOT_CMD(
 	flinfo,    2,    1,    do_flinfo,
 	"flinfo  - print FLASH memory information\n",
 	"\n    - print information for all FLASH memory banks\n"
 	"flinfo N\n    - print information for FLASH memory bank # N\n"
-);
-
-U_BOOT_CMD(
-	erase,   3,   1,  do_flerase,
-	"erase   - erase FLASH memory\n",
-	"start end\n"
-	"    - erase FLASH from addr 'start' to addr 'end'\n"
-	"erase start +len\n"
-	"    - erase FLASH from addr 'start' to the end of sect "
-	"w/addr 'start'+'len'-1\n"
-	"erase N:SF[-SL]\n    - erase sectors SF-SL in FLASH bank # N\n"
-	"erase bank N\n    - erase FLASH bank # N\n"
-	TMP_ERASE
-	"erase all\n    - erase all FLASH banks\n"
 );
 
 U_BOOT_CMD(
@@ -728,6 +769,24 @@ U_BOOT_CMD(
 	TMP_PROT_OFF
 	"protect off all\n    - make all FLASH banks writable\n"
 );
+
+#endif /* #ifndef COMPRESSED_UBOOT */
+
+U_BOOT_CMD(
+	erase,   3,   1,  do_flerase,
+	"erase   - erase FLASH memory\n",
+	"start end\n"
+	"    - erase FLASH from addr 'start' to addr 'end'\n"
+	"erase start +len\n"
+	"    - erase FLASH from addr 'start' to the end of sect "
+	"w/addr 'start'+'len'-1\n"
+	"erase N:SF[-SL]\n    - erase sectors SF-SL in FLASH bank # N\n"
+	"erase bank N\n    - erase FLASH bank # N\n"
+	TMP_ERASE
+	"erase all\n    - erase all FLASH banks\n"
+);
+
+
 
 #undef	TMP_ERASE
 #undef	TMP_PROT_ON

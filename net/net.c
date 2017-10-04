@@ -6,6 +6,7 @@
  *	Copyright 2000 Roland Borde
  *	Copyright 2000 Paolo Scaffardi
  *	Copyright 2000-2002 Wolfgang Denk, wd@denx.de
+ *	Copyright (c) 2013 Qualcomm Atheros, Inc.
  */
 
 /*
@@ -91,6 +92,12 @@
 #endif
 
 #if (CONFIG_COMMANDS & CFG_CMD_NET)
+#if defined(CONFIG_CMD_HTTPD)
+#include "httpd.h"
+#include "../httpd/uipopt.h"
+#include "../httpd/uip.h"
+#include "../httpd/uip_arp.h"
+#endif
 
 DECLARE_GLOBAL_DATA_PTR;
 
@@ -155,6 +162,9 @@ IPaddr_t	NetPingIP;		/* the ip address to ping 		*/
 
 static void PingStart(void);
 #endif
+#if defined(CFG_ATHRS26_PHY) && defined(CFG_ATHRHDR_EN)
+extern void athr_hdr_func(void);
+#endif
 
 #if (CONFIG_COMMANDS & CFG_CMD_CDP)
 static void CDPStart(void);
@@ -192,6 +202,17 @@ int		NetArpWaitTxPacketSize;
 uchar 		NetArpWaitPacketBuf[PKTSIZE_ALIGN + PKTALIGN];
 ulong		NetArpWaitTimerStart;
 int		NetArpWaitTry;
+
+#if defined(CONFIG_CMD_HTTPD)
+/* httpd */
+unsigned char *webfailsafe_data_pointer = NULL;
+int	webfailsafe_is_running = 0;
+int	webfailsafe_ready_for_upgrade = 0;
+int	webfailsafe_file_check_ok = 0;
+int	webfailsafe_upgrade_type = WEBFAILSAFE_UPGRADE_TYPE_FIRMWARE;
+void NetReceiveHttpd( volatile uchar * inpkt, int len );
+extern int do_reset(cmd_tbl_t *cmdtp, int flag, int argc, char * const argv[]);
+#endif
 
 void ArpRequest (void)
 {
@@ -236,6 +257,51 @@ void ArpRequest (void)
 	(void) eth_send (NetTxPacket, (pkt - NetTxPacket) + ARP_HDR_SIZE);
 }
 
+void GarpRequest (void)
+{
+	int i;
+	volatile uchar *pkt;
+	ARP_t *arp;
+
+#ifdef ET_DEBUG
+	printf ("ARP broadcast %d\n", NetArpWaitTry);
+#endif
+	pkt = NetTxPacket;
+
+	pkt += NetSetEther (pkt, NetBcastAddr, PROT_ARP);
+
+	arp = (ARP_t *) pkt;
+
+	arp->ar_hrd = htons (ARP_ETHER);
+	arp->ar_pro = htons (PROT_IP);
+	arp->ar_hln = 6;
+	arp->ar_pln = 4;
+	arp->ar_op = htons (ARPOP_REQUEST);
+
+	memcpy (&arp->ar_data[0], NetOurEther, 6);		/* source ET addr	*/
+	NetWriteIP ((uchar *) & arp->ar_data[6], NetOurIP);	/* source IP addr	*/
+	for (i = 10; i < 16; ++i) {
+		arp->ar_data[i] = 0;				/* dest ET addr = 0     */
+	}
+/*
+	if ((NetArpWaitPacketIP & NetOurSubnetMask) !=
+	    (NetOurIP & NetOurSubnetMask)) {
+		if (NetOurGatewayIP == 0) {
+			puts ("## Warning: gatewayip needed but not set\n");
+			NetArpWaitReplyIP = NetArpWaitPacketIP;
+		} else {
+			NetArpWaitReplyIP = NetOurGatewayIP;
+		}
+	} else {
+		NetArpWaitReplyIP = NetArpWaitPacketIP;
+	}
+*/
+    memcpy (&arp->ar_data[10], NetOurEther, 6);		/* source ET addr	*/
+
+	NetWriteIP ((uchar *) & arp->ar_data[16], NetOurIP);
+	(void) eth_send (NetTxPacket, (pkt - NetTxPacket) + ARP_HDR_SIZE);
+}
+
 void ArpTimeoutCheck(void)
 {
 	ulong t;
@@ -268,7 +334,14 @@ void ArpTimeoutCheck(void)
 int
 NetLoop(proto_t protocol)
 {
+	int ret = -1;
+    int rx_ret = 0;
+	ulong fwrecovTftpStart;
+	int rx_cnt = 0;	
 	bd_t *bd = gd->bd;
+#if defined(CFG_ATHRS26_PHY) && defined(CFG_ATHRHDR_EN)
+	static int AthrHdr_Flag = 0;
+#endif
 
 #ifdef CONFIG_NET_MULTI
 	NetRestarted = 0;
@@ -300,15 +373,37 @@ NetLoop(proto_t protocol)
 		NetArpWaitTxPacket -= (ulong)NetArpWaitTxPacket % PKTALIGN;
 		NetArpWaitTxPacketSize = 0;
 	}
-
+#if defined(CFG_ATHRS26_PHY) && defined(CFG_ATHRHDR_EN)
+	if(!AthrHdr_Flag) {
+	        eth_halt();
+		if (eth_init(bd) < 0) {
+            	    eth_halt();
+               	 return(-1);
+        	}
+		AthrHdr_Flag = 1;
+	}
+#else
 	eth_halt();
 #ifdef CONFIG_NET_MULTI
+#if defined(CFG_VITESSE_73XX_NOPHY) || defined(CFG_REH132) \
+	|| (defined(CFG_AG7240_NMACS) && (CFG_AG7240_NMACS == 2))
+	/*
+	 * There is no PHY in the DNI AP83 board with vitesse switch
+	 * VSC7395XYV, so set the eth1 interface to switch ports, so
+	 * that u-boot can route all the traffic through the switch
+	 * ports.
+	 */
+	setenv("ethact", "eth1");
+#else
+        setenv("ethact", "eth0");
+#endif
 	eth_set_current();
 #endif
 	if (eth_init(bd) < 0) {
 		eth_halt();
 		return(-1);
 	}
+#endif
 
 restart:
 #ifdef CONFIG_NET_MULTI
@@ -380,9 +475,18 @@ restart:
 		NetOurVLAN = getenv_VLAN("vlan");	/* VLANs must be read */
 		NetOurNativeVLAN = getenv_VLAN("nvlan");
 		break;
+#if defined(CFG_ATHRS26_PHY) && defined(CFG_ATHRHDR_EN)
+	case ATHRHDR:
+		athr_hdr_func();
+		break;
+#endif
 	default:
 		break;
 	}
+#if defined(CFG_ATHRS26_PHY) && defined(CFG_ATHRHDR_EN)
+	if(protocol == ATHRHDR)
+		goto skip_netloop;
+#endif
 
 	switch (net_check_prereq (protocol)) {
 	case 1:
@@ -416,6 +520,7 @@ restart:
 			break;
 #endif /* CFG_CMD_DHCP */
 
+#ifndef COMPRESSED_UBOOT
 		case BOOTP:
 			BootpTry = 0;
 			BootpRequest ();
@@ -425,6 +530,7 @@ restart:
 			RarpTry = 0;
 			RarpRequest ();
 			break;
+#endif
 #if (CONFIG_COMMANDS & CFG_CMD_PING)
 		case PING:
 			PingStart();
@@ -475,6 +581,13 @@ restart:
 	 *	Main packet reception loop.  Loop receiving packets until
 	 *	someone sets `NetState' to a state that terminates.
 	 */
+skip_netloop:
+
+#ifdef TP_FIRMWARE_RECOVERY
+	//get start time
+	fwrecovTftpStart = get_timer(0);
+#endif
+
 	for (;;) {
 		WATCHDOG_RESET();
 #ifdef CONFIG_SHOW_ACTIVITY
@@ -487,7 +600,28 @@ restart:
 		 *	Check the ethernet for a new packet.  The ethernet
 		 *	receive routine will process it.
 		 */
-			eth_rx();
+		rx_ret = eth_rx();
+
+#ifdef TP_FIRMWARE_RECOVERY
+		/* check if firmware recovery has no tftp server*/
+		if (isFWRecoveryStarted())
+		{
+			if (rx_ret > 0)
+			{
+				rx_cnt += rx_ret;
+			}
+
+			/* 
+			 * 10s would pass in firmware recovery when fail happen
+			 * reson may be no tftpserver at the beginning
+			 */
+			if ((get_timer(0) - fwrecovTftpStart) > 10*CFG_HZ && rx_cnt < 4096)
+			{
+				puts("Tftp server tranfer fail!\n");
+				return (-1);
+			}
+		}
+#endif
 
 		/*
 		 *	Abort if ctrl-c was pressed.
@@ -498,7 +632,12 @@ restart:
 			return (-1);
 		}
 
+#if defined(CFG_ATHRS26_PHY) && defined(CFG_ATHRHDR_EN)
+                if(protocol != ATHRHDR)
+			ArpTimeoutCheck();
+#else
 		ArpTimeoutCheck();
+#endif
 
 		/*
 		 *	Check for a timeout, and run the timeout handler
@@ -507,6 +646,7 @@ restart:
 		if (timeHandler && ((get_timer(0) - timeStart) > timeDelta)) {
 			thand_f *x;
 
+#if !defined(CFG_ATHRS26_PHY) && !defined(CFG_ATHRHDR_EN)
 #if defined(CONFIG_MII) || (CONFIG_COMMANDS & CFG_CMD_MII)
 #  if defined(CFG_FAULT_ECHO_LINK_DOWN) && \
       defined(CONFIG_STATUS_LED) &&	   \
@@ -521,6 +661,7 @@ restart:
 			}
 #  endif /* CFG_FAULT_ECHO_LINK_DOWN, ... */
 #endif /* CONFIG_MII, ... */
+#endif
 			x = timeHandler;
 			timeHandler = (thand_f *)0;
 			(*x)();
@@ -536,6 +677,10 @@ restart:
 			goto restart;
 
 		case NETLOOP_SUCCESS:
+#if defined(CFG_ATHRS26_PHY) && defined(CFG_ATHRHDR_EN)
+			if(protocol == ATHRHDR)
+				return 1;
+#endif
 			if (NetBootFileXferSize > 0) {
 				char buf[10];
 				printf("Bytes transferred = %ld (%lx hex)\n",
@@ -575,6 +720,14 @@ void NetStartAgain (void)
 	char *nretry;
 	int noretry = 0, once = 0;
 
+/*
+#ifdef TP_FIRMWARE_RECOVERY
+    if(isFWRecoveryStarted())
+    {
+        return;
+    }
+#endif
+*/
 	if ((nretry = getenv ("netretry")) != NULL) {
 		noretry = (strcmp (nretry, "no") == 0);
 		once = (strcmp (nretry, "once") == 0);
@@ -1140,6 +1293,9 @@ NetReceive(volatile uchar * inpkt, int len)
 	IPaddr_t tmp;
 	int	x;
 	uchar *pkt;
+#if defined(CFG_ATHRS26_PHY) && defined(CFG_ATHRHDR_EN)
+        uint8_t type;
+#endif
 #if (CONFIG_COMMANDS & CFG_CMD_CDP)
 	int iscdp;
 #endif
@@ -1147,6 +1303,30 @@ NetReceive(volatile uchar * inpkt, int len)
 
 #ifdef ET_DEBUG
 	printf("packet received\n");
+#endif
+
+#if defined(CONFIG_CMD_HTTPD)
+	if(webfailsafe_is_running){
+		NetReceiveHttpd(inpkt, len);
+		return;
+	}
+#endif
+
+#if defined(CFG_ATHRS26_PHY) && defined(CFG_ATHRHDR_EN)
+	type = (inpkt[1] & 0xf);
+	/* check for ack */
+       if(type == 0x6){
+               (*packetHandler)(inpkt,0,0,0);
+		return;
+	}
+	else if (type == 0x0) {
+	   inpkt = inpkt + ATHRHDR_LEN;  /* Remove ATHRHDR */
+	   len = len - ATHRHDR_LEN;
+	}
+	else{
+		printf("Packet dropped! Type invalid.\n");
+		return;
+	}
 #endif
 
 	NetRxPkt = inpkt;
@@ -1672,6 +1852,311 @@ void copy_filename (char *dst, char *src, int size)
 	}
 	*dst = '\0';
 }
+
+/**********************************************************************************
+ * HTTPD section
+ */
+#if defined(CONFIG_CMD_HTTPD)
+extern void fwrecovery_gpio_init(void);
+extern int fwrecovery_led_on(void);
+extern int fwrecovery_led_off(void);
+
+#define BUF	((struct uip_eth_hdr *)&uip_buf[0])
+ 
+void NetSendHttpd(void){
+	volatile uchar *tmpbuf = NetTxPacket;
+	int i;
+
+	for(i = 0; i < 40 + UIP_LLH_LEN; i++){
+	 tmpbuf[i] = uip_buf[i];
+	}
+
+		for(; i < uip_len; i++){
+			tmpbuf[i] = uip_appdata[i - 40 - UIP_LLH_LEN];
+		}
+		
+		NetSendPacket(NetTxPacket, uip_len);
+		//eth_send(NetTxPacket, uip_len);
+		}
+
+void NetReceiveHttpd(volatile uchar * inpkt, int len){
+	memcpy(uip_buf, (const void *)inpkt, len);
+	uip_len = len;
+    
+	if(BUF->type == htons(UIP_ETHTYPE_IP)){
+		uip_arp_ipin();
+		uip_input();
+		
+		if(uip_len > 0){
+			uip_arp_out();
+			NetSendHttpd();
+		}
+	} else if(BUF->type == htons(UIP_ETHTYPE_ARP)){
+		uip_arp_arpin();
+
+		if(uip_len > 0){
+			NetSendHttpd();
+		}
+	}	
+}
+
+/* *************************************
+*
+* HTTP web server for web failsafe mode
+*
+***************************************/
+int NetLoopHttpd(void){
+	bd_t *bd = gd->bd;
+	unsigned short int ip[2];
+	unsigned char ethinit_attempt = 0;
+	struct uip_eth_addr eaddr;
+
+    unsigned int garp_id = 0;
+    unsigned int led_state = 0;
+    unsigned int stop = 0;
+
+#if defined(CFG_ATHRS26_PHY) && defined(CFG_ATHRHDR_EN)
+	static int AthrHdr_Flag = 0;
+#endif
+
+	fwrecovery_gpio_init();
+	led_state = fwrecovery_led_on();
+
+#ifdef CONFIG_NET_MULTI
+	NetRestarted = 0;
+	NetDevExists = 0;
+#endif
+
+	/* XXX problem with bss workaround */
+	NetArpWaitPacketMAC	= NULL;
+	NetArpWaitTxPacket	= NULL;
+	NetArpWaitPacketIP	= 0;
+	NetArpWaitReplyIP	= 0;
+	NetArpWaitTxPacket	= NULL;
+	NetTxPacket			= NULL;
+
+	if(!NetTxPacket){
+		int i;
+		// Setup packet buffers, aligned correctly.
+		NetTxPacket = &PktBuf[0] + (PKTALIGN - 1);
+		NetTxPacket -= (ulong)NetTxPacket % PKTALIGN;
+
+		for(i = 0; i < PKTBUFSRX; i++){
+			NetRxPackets[i] = NetTxPacket + (i + 1) * PKTSIZE_ALIGN;
+		}
+	}
+
+	if(!NetArpWaitTxPacket){
+		NetArpWaitTxPacket = &NetArpWaitPacketBuf[0] + (PKTALIGN - 1);
+		NetArpWaitTxPacket -= (ulong)NetArpWaitTxPacket % PKTALIGN;
+		NetArpWaitTxPacketSize = 0;
+	}
+
+restart:
+
+#if defined(CFG_ATHRS26_PHY) && defined(CFG_ATHRHDR_EN)
+	if(!AthrHdr_Flag) {
+		eth_halt();		
+	}
+#else
+	eth_halt();
+#ifdef CONFIG_NET_MULTI
+#if defined(CFG_VITESSE_73XX_NOPHY) || defined(CFG_REH132)
+	/*
+	 * There is no PHY in the DNI AP83 board with vitesse switch
+	 * VSC7395XYV, so set the eth1 interface to switch ports, so
+	 * that u-boot can route all the traffic through the switch
+	 * ports.
+	 */
+	setenv("ethact", "eth1");
+#else
+	setenv("ethact", "eth0");
+#endif
+	eth_set_current();
+#endif
+#endif
+
+#if defined(CFG_ATHRS26_PHY) && defined(CFG_ATHRHDR_EN)
+	if(!AthrHdr_Flag) {
+#endif		
+		while(ethinit_attempt < 10){
+			if(eth_init(bd)){
+				ethinit_attempt = 0;
+				break;
+			} else {
+				ethinit_attempt++;
+				eth_halt();
+				udelay(1000*1000);
+			}
+		}
+		
+		if(ethinit_attempt > 0){
+			printf("## Error: couldn't initialize eth (cable disconnected?)!\n\n");
+			goto fail;
+		}
+
+#if defined(CFG_ATHRS26_PHY) && defined(CFG_ATHRHDR_EN)	
+		AthrHdr_Flag = 1;
+	}
+#endif
+
+	// get MAC address
+#ifdef CONFIG_NET_MULTI
+	memcpy (NetOurEther, eth_get_dev()->enetaddr, 6);
+#else
+	memcpy (NetOurEther, bd->bi_enetaddr, 6);
+#endif
+
+#ifdef CONFIG_NET_MULTI
+	NetDevExists = 1;
+#endif
+	NetBootFileXferSize = 0;
+
+	eaddr.addr[0] = NetOurEther[0];
+	eaddr.addr[1] = NetOurEther[1];
+	eaddr.addr[2] = NetOurEther[2];
+	eaddr.addr[3] = NetOurEther[3];
+	eaddr.addr[4] = NetOurEther[4];
+	eaddr.addr[5] = NetOurEther[5];
+
+	// set MAC address
+	uip_setethaddr(eaddr);
+
+	// set ip and other addresses
+	// TODO: do we need this with uIP stack?
+	//NetCopyIP(&NetOurIP, &bd->bi_ip_addr);
+	NetOurIP 			= getenv_IPaddr("ipaddr");
+	NetOurGatewayIP		= getenv_IPaddr("gatewayip");
+	NetOurSubnetMask	= getenv_IPaddr("netmask");
+	NetOurVLAN			= getenv_VLAN("vlan");
+	NetOurNativeVLAN	= getenv_VLAN("nvlan");
+
+	// start server...
+	//printf("Mac %d.%d.%d.%d.%d.%d\n", eaddr.addr[0], eaddr.addr[1], eaddr.addr[2], eaddr.addr[3],
+	//		eaddr.addr[4], eaddr.addr[5]);
+	printf("HTTP server is starting at IP: %ld.%ld.%ld.%ld\n", (ntohl(NetOurIP) & 0xff000000) >> 24, 
+		(ntohl(NetOurIP) & 0x00ff0000) >> 16, (ntohl(NetOurIP) & 0x0000ff00) >> 8, (ntohl(NetOurIP) & 0x000000ff));
+
+	HttpdStart();
+
+	// set local host ip address
+	ip[0] = htons(((ntohl(NetOurIP) & 0xFFFF0000) >> 16));
+	ip[1] = htons((ntohl(NetOurIP) & 0x0000FFFF));
+
+	uip_sethostaddr(ip);
+
+	// set network mask (255.255.255.0 -> local network)
+	ip[0] = htons(((0xFFFFFF00 & 0xFFFF0000) >> 16));
+	ip[1] = htons((0xFFFFFF00 & 0x0000FFFF));
+
+	uip_setnetmask(ip);
+
+	// should we also set default router ip address?
+	//uip_setdraddr();
+
+	// show current progress of the process
+	do_http_progress(WEBFAILSAFE_PROGRESS_START);
+
+	webfailsafe_is_running = 1;
+
+
+	// infinite loop
+	for(;;){
+
+                 garp_id++;
+                 if(garp_id % 1024000 == 0)
+                 {
+
+                    led_state = led_state?fwrecovery_led_off():fwrecovery_led_on();
+                    
+                 }
+#if 0                 
+                if(garp_id % 4194304 == 0)
+                {
+                    //printf("sending garp....\r\n");
+                    if(/*uip_len <= 0*/1)
+                    {
+                        GarpRequest();
+                    }
+                    else
+                    {
+                        printf("stop garp...\r\n");
+                        stop = 0;
+                    }
+                }
+#endif                
+		/*
+		 *	Check the ethernet for a new packet.
+		 *	The ethernet receive routine will process it.
+		 */
+		if(eth_rx() > 0){
+			HttpdHandler();
+		}
+
+		// if CTRL+C was pressed -> return!
+		if(ctrlc()){	
+			eth_halt();
+
+			// reset global variables to default state
+			webfailsafe_is_running = 0;
+			webfailsafe_ready_for_upgrade = 0;
+			webfailsafe_file_check_ok = 0;
+			webfailsafe_upgrade_type = WEBFAILSAFE_UPGRADE_TYPE_FIRMWARE;
+
+			printf("\nWeb failsafe mode aborted!\n\n");
+			goto fail;
+		}
+
+		// until upload is not completed, get back to the start of the loop
+		if(!webfailsafe_ready_for_upgrade){
+			continue;
+		}
+
+		// stop eth interface
+		eth_halt();
+
+		if (webfailsafe_file_check_ok){
+			// show progress
+			do_http_progress(WEBFAILSAFE_PROGRESS_UPLOAD_READY);
+
+			// try to make upgrade!
+			if(do_http_upgrade(NetBootFileXferSize, webfailsafe_upgrade_type) >= 0){
+				udelay(500*1000);
+
+				do_http_progress(WEBFAILSAFE_PROGRESS_UPGRADE_READY);
+
+				udelay(500*1000);
+
+				/* reset the board */
+				do_reset(NULL, 0, 0, NULL);
+			}
+
+			do_http_progress(WEBFAILSAFE_PROGRESS_UPGRADE_FAILED);
+		}else {
+			// show progress
+			do_http_progress(WEBFAILSAFE_PROGRESS_CHECK_FAILED);			
+		}
+
+		break;
+	}
+
+	// reset global variables to default state
+	webfailsafe_is_running = 0;
+	webfailsafe_ready_for_upgrade = 0;
+	webfailsafe_file_check_ok = 0;
+	webfailsafe_upgrade_type = WEBFAILSAFE_UPGRADE_TYPE_FIRMWARE;
+
+	NetBootFileXferSize = 0;
+
+	// go to restart
+	goto restart;
+
+fail:
+	led_state = fwrecovery_led_off();
+	return(-1);
+}
+
+#endif
 
 #endif /* CFG_CMD_NET */
 
