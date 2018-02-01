@@ -26,16 +26,7 @@
 
 int athrs_ar8033_mgmt_init(void)
 {
-	// Initialize MDC GPIO
-	MII_INIT;
-
-#ifdef CONFIG_MACH_QCA955x
 	return bb_miiphy_write(NULL, MII_PHY_ADDR, 0x00, 0x9000);
-#elif defined(CONFIG_MACH_QCA956x)
-    return bb_miiphy_write(NULL, MII_PHY_ADDR, 0x00, 0x1000);
-#else
-# error "Unsupported Atheros SOC for AR8033"
-#endif
 }
 
 int athrs_ar8033_phy_setup(void  *arg)

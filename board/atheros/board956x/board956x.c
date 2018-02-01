@@ -105,21 +105,55 @@ ath_usb2_initial_config(void)
 
 void ath_gpio_config(void)
 {
-#if defined(CONFIG_CUS249)
-    /* Turn on System LED GPIO18 for CUS249 */
-    ath_reg_rmw_clear(GPIO_OUT_ADDRESS, (1 << 18));
-#endif
-	/* Turn off JUMPST_LED and 5Gz LED during bootup */
-//	ath_reg_rmw_set(GPIO_OE_ADDRESS, (1 << 15));
-//	ath_reg_rmw_set(GPIO_OE_ADDRESS, (1 << 12));
-#if (defined(CONFIG_ATHR_8033_PHY) && defined(CONFIG_MACH_QCA956x))
-    //disable JTAG
-    ath_reg_rmw_set(GPIO_FUNCTION_ADDRESS, (1 << 1));
-    /* init MDIO gpio, MDC: gpio1, DMIO: gpio4 */
-    ath_reg_rmw_clear(GPIO_OE_ADDRESS, (1 << 3) | (1 << 4));
+    uint32_t rddata;
+
     ath_reg_rmw_clear(GPIO_OUT_FUNCTION0_ADDRESS, 0xff000000);
     ath_reg_rmw_clear(GPIO_OUT_FUNCTION1_ADDRESS, 0x000000ff);
-#endif
+
+    rddata = ath_reg_rd(GPIO_IN_ENABLE3_ADDRESS) & ~GPIO_IN_ENABLE3_MII_GE1_MDI_MASK;
+    rddata |= GPIO_IN_ENABLE3_MII_GE1_MDI_SET(10);
+    ath_reg_wr(GPIO_IN_ENABLE3_ADDRESS, rddata);
+
+    rddata = ath_reg_rd(GPIO_OUT_FUNCTION2_ADDRESS) & ~(GPIO_OUT_FUNCTION2_ENABLE_GPIO_10_MASK);
+    rddata |= (GPIO_OUT_FUNCTION2_ENABLE_GPIO_10_SET(0x20));
+    ath_reg_wr(GPIO_OUT_FUNCTION2_ADDRESS, rddata);
+
+    rddata = ath_reg_rd(GPIO_OE_ADDRESS);
+    rddata &= ~(1<<10);
+    ath_reg_wr(GPIO_OE_ADDRESS, rddata);
+
+    rddata = ath_reg_rd(GPIO_OE_ADDRESS);
+    rddata &= ~(1<<8);
+    ath_reg_wr(GPIO_OE_ADDRESS, rddata);
+
+    rddata = ath_reg_rd(GPIO_OUT_FUNCTION2_ADDRESS) & ~(GPIO_OUT_FUNCTION2_ENABLE_GPIO_8_MASK);
+    rddata |= GPIO_OUT_FUNCTION2_ENABLE_GPIO_8_SET(0x21);
+    ath_reg_wr(GPIO_OUT_FUNCTION2_ADDRESS, rddata);
+
+    //leds
+    ath_reg_rmw_clear(GPIO_OUT_ADDRESS, (1 <<  1) | (1 << 5) | (1 << 7) | (1 << 9));
+    ath_reg_rmw_clear(GPIO_OE_ADDRESS,  (1 <<  1) | (1 << 5) | (1 << 7) | (1 << 9));
+    udelay(100);
+
+    ath_reg_rmw_set(GPIO_OUT_ADDRESS, (1 << 5));
+    udelay(100);
+
+    ath_reg_rmw_set(GPIO_OUT_ADDRESS, (1 << 7));
+    udelay(500000);
+    ath_reg_rmw_clear(GPIO_OUT_ADDRESS, (1 << 7));
+    udelay(500000);
+    ath_reg_rmw_set(GPIO_OUT_ADDRESS, (1 << 1));
+    udelay(500000);
+    ath_reg_rmw_clear(GPIO_OUT_ADDRESS, (1 << 1));
+    udelay(500000);
+    ath_reg_rmw_set(GPIO_OUT_ADDRESS, (1 << 9));
+    udelay(500000);
+    ath_reg_rmw_clear(GPIO_OUT_ADDRESS, (1 << 9));
+    udelay(500000);
+    ath_reg_rmw_set(GPIO_OUT_ADDRESS, (1 << 7));
+    udelay(100);
+    ath_reg_rmw_clear(GPIO_OUT_FUNCTION2_ADDRESS, 0x000000ff);
+    ath_reg_rmw_clear(GPIO_OUT_FUNCTION2_ADDRESS, 0x00ff0000);
 }
 
 int
@@ -135,8 +169,8 @@ ath_mem_config(void)
 #if !defined(CFG_DOUBLE_BOOT_SECOND)
 	tap = ath_ddr_tap_cal();
 #endif
-	tap = (uint32_t *)0xbd001f10;
-	prmsg("Tap (low, high) = (0x%x, 0x%x)\n", tap[0], tap[1]);
+//	tap = (uint32_t *)0xbd001f10;
+//	prmsg("Tap (low, high) = (0x%x, 0x%x)\n", tap[0], tap[1]);
 
 	tap = (uint32_t *)TAP_CONTROL_0_ADDRESS;
 	prmsg("Tap values = (0x%x, 0x%x, 0x%x, 0x%x)\n",

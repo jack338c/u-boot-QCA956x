@@ -188,9 +188,9 @@
 // DDR1
 // 0x4186   25Mhz
 // 0x4270   40Mhz
-//double the refresh rate, by puhaowen 2015-11-2
-#define CFG_DDR_REFRESH_VAL		0x409c	
-#define CFG_DDR2_REFRESH_VAL    0x4061
+
+#define CFG_DDR_REFRESH_VAL		0x4186
+#define CFG_DDR2_REFRESH_VAL    0x40c3
 /*
  * The following #defines are needed to get flash environment right
  */

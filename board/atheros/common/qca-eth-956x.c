@@ -195,7 +195,7 @@ void ath_gmac_mii_setup(ath_gmac_mac_t *mac)
 		ath_reg_wr(SWITCH_CLOCK_SPARE_ADDRESS, 0x45500);
 	} else {
 		//25Mhz
-		ath_reg_wr(SWITCH_CLOCK_SPARE_ADDRESS, 0xc5200);
+		ath_reg_wr(SWITCH_CLOCK_SPARE_ADDRESS, 0xc5240);
 	}
 
 	if (is_s27() && (mac->mac_unit == 0)) {
@@ -222,6 +222,7 @@ void ath_gmac_mii_setup(ath_gmac_mac_t *mac)
 	}
 
 	if ( CFG_ATH_GMAC_NMACS == 1){
+		printf("Dragonfly  ----> S17 PHY *\n");
 		mgmt_cfg_val = 7;
 
 		ath_reg_wr(ATH_ETH_CFG, ETH_CFG_ETH_RXDV_DELAY_SET(3) |

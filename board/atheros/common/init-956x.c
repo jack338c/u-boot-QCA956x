@@ -24,6 +24,8 @@
 #include <asm/addrspace.h>
 #include <atheros.h>
 
+
+
 void ath_sys_frequency(void);
 
 #define ATH_MAX_DDR_SIZE		(256 * 1024 * 1024)
@@ -68,7 +70,7 @@ ath_ram_type(uint32_t bs)
  * Should Sync with CFG_PLL_FREQ
  * */
 #ifndef CFG_DDR2_DRAGONFLY_CAS_LATENCY
-#define CFG_DDR2_DRAGONFLY_CAS_LATENCY	4
+#define CFG_DDR2_DRAGONFLY_CAS_LATENCY	5
 #endif
 
 #ifdef CONFIG_TB614
@@ -382,7 +384,7 @@ ath_ddr_initial_config(uint32_t refresh)
 	udelay(10);
 
 	if (type == ATH_MEM_DDR2) {
-		ath_reg_wr_nf(DDR_EMR2_ADDRESS, 0);
+		ath_reg_wr_nf(DDR_EMR2_ADDRESS, 0x80);
 		ath_reg_wr_nf(DDR_CONTROL_ADDRESS, 0x10);	// EMR2
 		udelay(10);
 		ath_reg_wr_nf(DDR_EMR3_ADDRESS, 0);

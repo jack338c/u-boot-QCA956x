@@ -385,8 +385,8 @@ ath_spi_flash_cs0_write_page(unsigned int addr, unsigned char *data, int len)
 #  define MII_PHY_ADDR 0x4
 # endif
 
-# define MII_INIT		do{ath_reg_rmw_clear(GPIO_OE_ADDRESS, 1 << GPIO_MII_MDC);}while(0)
-# define MDIO_ACTIVE	do{ath_reg_rmw_clear(GPIO_OE_ADDRESS, 1 << GPIO_MII_MDIO);}while(0)
+# define MII_INIT		do{}while(0)
+# define MDIO_ACTIVE	do{ath_reg_rmw_clear(GPIO_OE_ADDRESS, (1 << GPIO_MII_MDIO) | (1 << GPIO_MII_MDC));}while(0)
 # define MDIO_TRISTATE	do{ath_reg_rmw_set(GPIO_OE_ADDRESS, 1 << GPIO_MII_MDIO);}while(0)
 # define MDIO_READ		(!!(ath_reg_rd(GPIO_IN_ADDRESS) & (1 << GPIO_MII_MDIO)))
 # define MDIO(v)		do{if(v) ath_reg_rmw_set(GPIO_OUT_ADDRESS, 1 << GPIO_MII_MDIO); \

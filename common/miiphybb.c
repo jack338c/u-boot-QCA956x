@@ -38,7 +38,7 @@
  * Utility to send the preamble, address, and register (common to read
  * and write).
  */
-static void miiphy_pre (char read, unsigned char addr, unsigned char reg)
+void miiphy_pre (char read, unsigned char addr, unsigned char reg)
 {
 	int j;			/* counter */
 #if !defined(CONFIG_ATHEROS) && !defined(CONFIG_EP8248)
@@ -165,13 +165,25 @@ int bb_miiphy_read (char *devname, unsigned char addr,
 		MIIDELAY;
 	}
 
+#if 0
 	MDC (1);
 	MIIDELAY;
 	MDC (0);
 	MIIDELAY;
 	MDC (1);
 	MIIDELAY;
-
+#else
+	MDIO_ACTIVE;
+	MDIO(1);
+	MDC(0);
+	MIIDELAY;
+	MDC(1);
+	MIIDELAY;
+	
+    MDIO(0);
+    MDC(0);
+    MIIDELAY;
+#endif
 	*value = rdreg;
 
 #ifdef DEBUG
@@ -228,12 +240,17 @@ int bb_miiphy_write (char *devname, unsigned char addr,
 	/*
 	 * Tri-state the MDIO line.
 	 */
+#if 0
 	MDIO_TRISTATE;
 	MDC (0);
 	MIIDELAY;
 	MDC (1);
 	MIIDELAY;
-
+#else
+    MDIO(0);
+    MDC(0);
+    MIIDELAY;
+#endif
 	return 0;
 }
 
